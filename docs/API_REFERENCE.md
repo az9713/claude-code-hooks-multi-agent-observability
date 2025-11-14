@@ -1,0 +1,751 @@
+# API Reference
+
+Complete API documentation for the Multi-Agent Observability System.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Base URL](#base-url)
+- [Authentication](#authentication)
+- [HTTP Endpoints](#http-endpoints)
+  - [Events API](#events-api)
+  - [Theme API](#theme-api)
+- [WebSocket Protocol](#websocket-protocol)
+- [Error Handling](#error-handling)
+- [Rate Limiting](#rate-limiting)
+- [Data Models](#data-models)
+
+---
+
+## Overview
+
+The Multi-Agent Observability System provides a REST API for event management and a WebSocket API for real-time event streaming. The server is built with Bun and uses SQLite for persistence.
+
+**Technology Stack:**
+- **Runtime**: Bun (JavaScript/TypeScript runtime)
+- **Database**: SQLite with WAL (Write-Ahead Logging) mode
+- **Communication**: HTTP REST + WebSocket
+- **Data Format**: JSON
+
+---
+
+## Base URL
+
+**Default Local Development:**
+```
+HTTP: http://localhost:4000
+WebSocket: ws://localhost:4000
+```
+
+**Configurable via Environment Variable:**
+```bash
+SERVER_PORT=4000  # Default
+```
+
+---
+
+## Authentication
+
+**Current Version**: No authentication required
+
+The system is designed for local development and internal use. Future versions may include:
+- API key authentication
+- JWT tokens
+- OAuth integration
+
+---
+
+## HTTP Endpoints
+
+### Events API
+
+#### POST /events
+
+Create a new event from a Claude Code hook.
+
+**Purpose**: Receive and store hook events from agents
+
+**Request:**
+
+```http
+POST /events HTTP/1.1
+Host: localhost:4000
+Content-Type: application/json
+
+{
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "hook_event_type": "PreToolUse",
+  "payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "ls -la"
+    }
+  },
+  "timestamp": 1705240800000,
+  "model_name": "claude-sonnet-4-5",
+  "summary": "Agent lists directory contents",
+  "chat": [
+    {
+      "role": "user",
+      "content": "Show me the files"
+    }
+  ]
+}
+```
+
+**Request Body Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source_app` | string | Yes | Application identifier (e.g., "my-api-server") |
+| `session_id` | string | Yes | Unique session UUID from Claude Code |
+| `hook_event_type` | string | Yes | Type of hook event (see [Event Types](#event-types)) |
+| `payload` | object | Yes | Event-specific data (structure varies by type) |
+| `timestamp` | number | No | Unix timestamp in milliseconds (auto-generated if omitted) |
+| `model_name` | string | No | AI model identifier (e.g., "claude-sonnet-4-5") |
+| `summary` | string | No | AI-generated human-readable summary |
+| `chat` | array | No | Full conversation transcript (JSONL format) |
+| `humanInTheLoop` | object | No | Human-in-the-loop request data |
+
+**Response:**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Access-Control-Allow-Origin: *
+
+{
+  "id": 1234,
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "hook_event_type": "PreToolUse",
+  "payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "ls -la"
+    }
+  },
+  "timestamp": 1705240800000,
+  "model_name": "claude-sonnet-4-5",
+  "summary": "Agent lists directory contents"
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Auto-generated unique event ID |
+| All request fields | - | Echoed back in response |
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Event created successfully |
+| 400 | Invalid request (missing required fields or invalid JSON) |
+| 500 | Server error |
+
+**Example with curl:**
+
+```bash
+curl -X POST http://localhost:4000/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_app": "test-app",
+    "session_id": "test-session-123",
+    "hook_event_type": "PreToolUse",
+    "payload": {
+      "tool_name": "Read",
+      "tool_input": {"file_path": "/tmp/test.txt"}
+    }
+  }'
+```
+
+---
+
+#### GET /events/recent
+
+Retrieve recent events with optional pagination.
+
+**Purpose**: Fetch historical events for initial load or refresh
+
+**Request:**
+
+```http
+GET /events/recent?limit=100 HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | number | 300 | Maximum number of events to return |
+
+**Response:**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Access-Control-Allow-Origin: *
+
+[
+  {
+    "id": 1234,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-...",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1705240800000,
+    "payload": {...},
+    "model_name": "claude-sonnet-4-5",
+    "summary": "Agent reads file"
+  },
+  {
+    "id": 1235,
+    "source_app": "another-project",
+    "session_id": "x9y8z7w6-...",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1705240805000,
+    "payload": {...}
+  }
+]
+```
+
+**Response**: Array of event objects (ordered by timestamp, newest first)
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Events retrieved successfully |
+| 500 | Server error |
+
+**Example with curl:**
+
+```bash
+curl http://localhost:4000/events/recent?limit=50
+```
+
+---
+
+#### GET /events/filter-options
+
+Get available filter values for UI dropdowns.
+
+**Purpose**: Retrieve unique values for source_app, session_id, and hook_event_type
+
+**Request:**
+
+```http
+GET /events/filter-options HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "source_apps": [
+    "my-api-server",
+    "react-app",
+    "backend-service"
+  ],
+  "session_ids": [
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "x9y8z7w6-v5u4-3210-zyxw-vu9876543210"
+  ],
+  "hook_event_types": [
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "Notification",
+    "Stop"
+  ]
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source_apps` | string[] | Unique application identifiers |
+| `session_ids` | string[] | Unique session IDs (limited to 300 most recent) |
+| `hook_event_types` | string[] | Unique event types |
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Filter options retrieved successfully |
+| 500 | Server error |
+
+---
+
+#### POST /events/:id/respond
+
+Respond to a Human-in-the-Loop (HITL) request.
+
+**Purpose**: Send user response back to waiting agent
+
+**Request:**
+
+```http
+POST /events/1234/respond HTTP/1.1
+Host: localhost:4000
+Content-Type: application/json
+
+{
+  "response": "Yes, proceed with the operation",
+  "permission": true,
+  "choice": "Option 1",
+  "respondedBy": "engineer@example.com"
+}
+```
+
+**Request Body Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `response` | string | No | Text response to question |
+| `permission` | boolean | No | Approval/denial for permission requests |
+| `choice` | string | No | Selected choice from multiple options |
+| `respondedBy` | string | No | User identifier |
+
+**Response:**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "id": 1234,
+  "source_app": "my-project",
+  "session_id": "abc-123",
+  "hook_event_type": "Notification",
+  "humanInTheLoop": {
+    "question": "Should I proceed?",
+    "type": "permission",
+    "responseWebSocketUrl": "ws://localhost:9000/hitl"
+  },
+  "humanInTheLoopStatus": {
+    "status": "responded",
+    "respondedAt": 1705240850000,
+    "response": {
+      "permission": true,
+      "respondedBy": "engineer@example.com"
+    }
+  }
+}
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Response sent successfully |
+| 404 | Event not found |
+| 400 | Invalid request |
+| 500 | Server error or failed to reach agent |
+
+---
+
+### Theme API
+
+#### POST /api/themes
+
+Create a new UI theme.
+
+**Request:**
+
+```http
+POST /api/themes HTTP/1.1
+Host: localhost:4000
+Content-Type: application/json
+
+{
+  "name": "ocean-blue",
+  "displayName": "Ocean Blue",
+  "description": "Calm blue theme inspired by the ocean",
+  "colors": {
+    "primary": "#0066cc",
+    "primaryHover": "#0052a3",
+    "bgPrimary": "#001a33",
+    "textPrimary": "#ffffff"
+  },
+  "isPublic": true,
+  "authorId": "user123",
+  "tags": ["blue", "dark", "professional"]
+}
+```
+
+**Response:**
+
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "success": true,
+  "data": {
+    "id": "theme-uuid-here",
+    "name": "ocean-blue",
+    "displayName": "Ocean Blue",
+    "createdAt": 1705240800000,
+    "updatedAt": 1705240800000
+  }
+}
+```
+
+---
+
+#### GET /api/themes
+
+Search for themes.
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | string | Search in name/description |
+| `isPublic` | boolean | Filter by public/private |
+| `authorId` | string | Filter by author |
+| `sortBy` | string | Sort field (name, created, rating) |
+| `limit` | number | Max results |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "theme-1",
+      "name": "ocean-blue",
+      "displayName": "Ocean Blue",
+      "rating": 4.5,
+      "downloadCount": 42
+    }
+  ]
+}
+```
+
+---
+
+#### GET /api/themes/:id
+
+Get a specific theme by ID.
+
+#### PUT /api/themes/:id
+
+Update a theme.
+
+#### DELETE /api/themes/:id
+
+Delete a theme.
+
+#### GET /api/themes/:id/export
+
+Export theme configuration.
+
+#### POST /api/themes/import
+
+Import theme from exported data.
+
+---
+
+## WebSocket Protocol
+
+### Connection
+
+**Endpoint**: `ws://localhost:4000/stream`
+
+**Connect with JavaScript:**
+
+```javascript
+const ws = new WebSocket('ws://localhost:4000/stream');
+
+ws.onopen = () => {
+  console.log('Connected to event stream');
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Received:', data);
+};
+
+ws.onerror = (error) => {
+  console.error('WebSocket error:', error);
+};
+
+ws.onclose = () => {
+  console.log('Disconnected');
+};
+```
+
+---
+
+### Message Types
+
+#### Initial Events
+
+Sent immediately upon connection.
+
+**Message:**
+
+```json
+{
+  "type": "initial",
+  "data": [
+    {
+      "id": 1,
+      "source_app": "app1",
+      "session_id": "session1",
+      "hook_event_type": "PreToolUse",
+      "timestamp": 1705240800000,
+      "payload": {}
+    }
+  ]
+}
+```
+
+**Purpose**: Load recent events (last 300) into client
+
+---
+
+#### New Event
+
+Broadcast when a new event is created.
+
+**Message:**
+
+```json
+{
+  "type": "event",
+  "data": {
+    "id": 1235,
+    "source_app": "app2",
+    "session_id": "session2",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1705240850000,
+    "payload": {
+      "tool_name": "Read",
+      "tool_result": "File contents..."
+    }
+  }
+}
+```
+
+**Purpose**: Real-time event notification to all connected clients
+
+---
+
+### Client-to-Server Messages
+
+Currently not implemented. WebSocket is server-to-client only.
+
+**Future Enhancement**: Client could send commands like:
+- Subscribe to specific sessions
+- Request historical data
+- Acknowledge receipt
+
+---
+
+### Connection Management
+
+#### Reconnection Strategy
+
+**Recommended Implementation:**
+
+```javascript
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 10;
+
+function connect() {
+  const ws = new WebSocket('ws://localhost:4000/stream');
+
+  ws.onclose = () => {
+    if (reconnectAttempts < maxReconnectAttempts) {
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+      reconnectAttempts++;
+
+      console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+      setTimeout(connect, delay);
+    } else {
+      console.error('Max reconnection attempts reached');
+    }
+  };
+
+  ws.onopen = () => {
+    reconnectAttempts = 0; // Reset on successful connection
+  };
+}
+```
+
+**Exponential Backoff:**
+- Attempt 1: 2 seconds
+- Attempt 2: 4 seconds
+- Attempt 3: 8 seconds
+- Attempt 4: 16 seconds
+- Attempt 5+: 30 seconds (capped)
+
+---
+
+## Error Handling
+
+### HTTP Error Responses
+
+**Format:**
+
+```json
+{
+  "error": "Error description",
+  "message": "Additional details",
+  "validationErrors": [
+    {
+      "field": "source_app",
+      "message": "Field is required",
+      "code": "REQUIRED"
+    }
+  ]
+}
+```
+
+### Common Error Codes
+
+| Status | Error | Cause | Solution |
+|--------|-------|-------|----------|
+| 400 | Missing required fields | Request missing source_app, session_id, or hook_event_type | Include all required fields |
+| 400 | Invalid JSON | Malformed JSON in request body | Validate JSON before sending |
+| 404 | Event not found | Event ID doesn't exist | Check event ID |
+| 500 | Server error | Database error or internal failure | Check server logs |
+
+---
+
+## Rate Limiting
+
+**Current Version**: No rate limiting
+
+**Recommendations for Production:**
+- Implement per-IP rate limiting
+- Add burst protection
+- Use sliding window algorithm
+- Suggested limits:
+  - 1000 requests per minute per IP
+  - 100 WebSocket connections per IP
+
+---
+
+## Data Models
+
+### Event Types
+
+All supported hook event types:
+
+| Type | Description | When Triggered |
+|------|-------------|----------------|
+| `PreToolUse` | Before tool execution | Claude about to use a tool |
+| `PostToolUse` | After tool execution | Tool completes (success or failure) |
+| `UserPromptSubmit` | User submits prompt | User sends message to Claude |
+| `Notification` | Agent notification | Claude requests user interaction |
+| `Stop` | Response completion | Claude finishes responding |
+| `SubagentStop` | Subagent completion | Subagent task completes |
+| `PreCompact` | Before context compaction | Context about to be compressed |
+| `SessionStart` | Session begins | New session starts |
+| `SessionEnd` | Session ends | Session terminates |
+
+### HookEvent Interface
+
+```typescript
+interface HookEvent {
+  id?: number;                    // Auto-generated
+  source_app: string;             // Application identifier
+  session_id: string;             // Session UUID
+  hook_event_type: string;        // Event type
+  payload: Record<string, any>;   // Event-specific data
+  chat?: any[];                   // Conversation history
+  summary?: string;               // AI summary
+  timestamp?: number;             // Unix ms
+  model_name?: string;            // AI model
+  humanInTheLoop?: HumanInTheLoop;
+  humanInTheLoopStatus?: HumanInTheLoopStatus;
+}
+```
+
+### Payload Examples
+
+**PreToolUse - Bash:**
+```json
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git status"
+  }
+}
+```
+
+**PostToolUse - Read:**
+```json
+{
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "/path/to/file.js"
+  },
+  "tool_result": "// File contents..."
+}
+```
+
+**UserPromptSubmit:**
+```json
+{
+  "user_message": "Create a new API endpoint"
+}
+```
+
+---
+
+## Best Practices
+
+### For Hook Scripts
+
+1. **Always exit with 0**: Don't block Claude Code on observability failures
+2. **Set timeouts**: Don't hang indefinitely
+3. **Validate before sending**: Check required fields
+4. **Handle errors gracefully**: Log errors but continue
+
+### For API Consumers
+
+1. **Implement retry logic**: Network failures are temporary
+2. **Use WebSocket for real-time**: Don't poll HTTP endpoints
+3. **Limit stored events**: Prevent memory bloat
+4. **Validate responses**: Don't assume structure
+
+### Performance Tips
+
+1. **Batch events**: Send multiple in one array if possible
+2. **Compress large payloads**: Use gzip for chat transcripts
+3. **Index database**: Events table has indexes on common queries
+4. **Use WAL mode**: SQLite configured for concurrent reads
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0.0 | 2025-01 | Initial release |
+| 1.1.0 | 2025-01 | Added Theme API |
+| 1.2.0 | 2025-01 | Added HITL support |
+
+---
+
+## Support
+
+For issues, questions, or contributions:
+- **GitHub Issues**: [Report bugs or request features](https://github.com/your-repo/issues)
+- **Documentation**: Check ARCHITECTURE.md and CODE_WALKTHROUGH.md
+- **Video Tutorials**: [YouTube Channel](https://www.youtube.com/@indydevdan)
