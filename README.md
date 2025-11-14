@@ -383,6 +383,36 @@ This command will:
 
 This ensures your hooks work correctly regardless of where Claude Code is executed from.
 
+## 📚 Documentation
+
+Comprehensive guides to help you learn and master this AI agentic coding system:
+
+### Getting Started
+- **[Getting Started Guide](docs/GETTING_STARTED.md)** - Perfect for beginners! Complete walkthrough from installation to your first agent
+- **[Integration Guide](docs/INTEGRATION_GUIDE.md)** - Step-by-step instructions to integrate observability into your projects
+
+### Reference Documentation
+- **[API Reference](docs/API_REFERENCE.md)** - Complete HTTP and WebSocket API documentation with examples
+- **[Architecture Deep Dive](docs/ARCHITECTURE.md)** - Detailed system architecture and design principles
+- **[Code Walkthrough](docs/CODE_WALKTHROUGH.md)** - Line-by-line explanation of key components
+
+### Development Guides
+- **[Hook Development Guide](docs/HOOK_DEVELOPMENT.md)** - Create custom hooks for your specific needs
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Solutions to common issues and debugging techniques
+
+### Quick Links
+| I want to... | Read this guide |
+|--------------|----------------|
+| Get started from scratch | [Getting Started](docs/GETTING_STARTED.md) |
+| Add observability to my project | [Integration Guide](docs/INTEGRATION_GUIDE.md) |
+| Create a custom hook | [Hook Development](docs/HOOK_DEVELOPMENT.md) |
+| Understand the architecture | [Architecture](docs/ARCHITECTURE.md) |
+| Understand the code | [Code Walkthrough](docs/CODE_WALKTHROUGH.md) |
+| Call the API programmatically | [API Reference](docs/API_REFERENCE.md) |
+| Fix a problem | [Troubleshooting](docs/TROUBLESHOOTING.md) |
+
+---
+
 ## Master AI **Agentic Coding**
 > And prepare for the future of software engineering
 
