@@ -1933,11 +1933,19 @@ Export session data in multiple formats.
 - `format`: Export format (`json`, `markdown`, `html`) - default: `json`
 - `source_app` (optional): Filter by source application
 
+**Data Isolation:**
+All exported data (events, metrics, performance, patterns, analytics, bookmarks, tags) is properly filtered by `source_app` to prevent data leakage between different applications using the same session ID. If `source_app` is provided in the query, only events from that app are exported. Otherwise, the `source_app` from the first matching event is used to filter all auxiliary data.
+
 **Examples:**
 
 **Export as JSON:**
 ```http
 GET /api/export/session/abc123?format=json HTTP/1.1
+```
+
+**Export as JSON with source_app filter:**
+```http
+GET /api/export/session/abc123?format=json&source_app=my-app HTTP/1.1
 ```
 
 **Export as Markdown:**
@@ -1951,6 +1959,15 @@ GET /api/export/session/abc123?format=html HTTP/1.1
 ```
 
 **Response:** File download with appropriate Content-Type and Content-Disposition headers.
+
+**Exported Data Includes:**
+- Events (filtered by session_id and source_app)
+- Session metrics (filtered by session_id and source_app)
+- Performance metrics (filtered by session_id and source_app)
+- Detected patterns (filtered by session_id and source_app)
+- Tool analytics (filtered by session_id and source_app)
+- Bookmarks (filtered by session_id and source_app)
+- Tags (filtered by session_id and source_app)
 
 **Status Codes:**
 - 200: Session exported successfully

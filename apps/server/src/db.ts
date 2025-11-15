@@ -1645,31 +1645,34 @@ export function getSessionExportData(sessionId: string, sourceApp?: string): any
     return null;
   }
 
-  // Get metrics
-  const metricsStmt = db.prepare('SELECT * FROM session_metrics WHERE session_id = ? LIMIT 1');
-  const metrics = metricsStmt.get(sessionId) as any;
+  // Use the source_app from the first event to ensure consistency
+  const actualSourceApp = events[0].source_app;
 
-  // Get performance metrics
-  const perfStmt = db.prepare('SELECT * FROM performance_metrics WHERE session_id = ? LIMIT 1');
-  const performance = perfStmt.get(sessionId) as any;
+  // Get metrics - filter by both session_id and source_app
+  const metricsStmt = db.prepare('SELECT * FROM session_metrics WHERE session_id = ? AND source_app = ? LIMIT 1');
+  const metrics = metricsStmt.get(sessionId, actualSourceApp) as any;
 
-  // Get patterns
-  const patternsStmt = db.prepare('SELECT * FROM detected_patterns WHERE session_id = ?');
-  const patterns = patternsStmt.all(sessionId) as any[];
+  // Get performance metrics - filter by both session_id and source_app
+  const perfStmt = db.prepare('SELECT * FROM performance_metrics WHERE session_id = ? AND source_app = ? LIMIT 1');
+  const performance = perfStmt.get(sessionId, actualSourceApp) as any;
 
-  // Get tool analytics
-  const analyticsStmt = db.prepare('SELECT * FROM tool_analytics WHERE session_id = ?');
-  const analytics = analyticsStmt.all(sessionId) as any[];
+  // Get patterns - filter by both session_id and source_app
+  const patternsStmt = db.prepare('SELECT * FROM detected_patterns WHERE session_id = ? AND source_app = ?');
+  const patterns = patternsStmt.all(sessionId, actualSourceApp) as any[];
 
-  // Get bookmarks and tags
-  const bookmarkStmt = db.prepare('SELECT * FROM session_bookmarks WHERE session_id = ? LIMIT 1');
-  const bookmark = bookmarkStmt.get(sessionId) as any;
+  // Get tool analytics - filter by both session_id and source_app
+  const analyticsStmt = db.prepare('SELECT * FROM tool_analytics WHERE session_id = ? AND source_app = ?');
+  const analytics = analyticsStmt.all(sessionId, actualSourceApp) as any[];
 
-  const tagsStmt = db.prepare('SELECT * FROM session_tags WHERE session_id = ?');
-  const tags = tagsStmt.all(sessionId) as any[];
+  // Get bookmarks and tags - filter by both session_id and source_app
+  const bookmarkStmt = db.prepare('SELECT * FROM session_bookmarks WHERE session_id = ? AND source_app = ? LIMIT 1');
+  const bookmark = bookmarkStmt.get(sessionId, actualSourceApp) as any;
+
+  const tagsStmt = db.prepare('SELECT * FROM session_tags WHERE session_id = ? AND source_app = ?');
+  const tags = tagsStmt.all(sessionId, actualSourceApp) as any[];
 
   return {
-    source_app: events[0].source_app,
+    source_app: actualSourceApp,
     session_id: sessionId,
     events: events.map(e => ({
       ...e,
