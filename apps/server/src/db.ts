@@ -55,6 +55,18 @@ export function initDatabase(): void {
     if (!hasModelNameColumn) {
       db.exec('ALTER TABLE events ADD COLUMN model_name TEXT');
     }
+
+    // Check if token_count column exists, add it if not (for migration)
+    const hasTokenCountColumn = columns.some((col: any) => col.name === 'token_count');
+    if (!hasTokenCountColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN token_count INTEGER');
+    }
+
+    // Check if estimated_cost column exists, add it if not (for migration)
+    const hasEstimatedCostColumn = columns.some((col: any) => col.name === 'estimated_cost');
+    if (!hasEstimatedCostColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN estimated_cost REAL');
+    }
   } catch (error) {
     // If the table doesn't exist yet, the CREATE TABLE above will handle it
   }
@@ -120,12 +132,51 @@ export function initDatabase(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_themes_createdAt ON themes(createdAt)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_theme_shares_token ON theme_shares(shareToken)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_theme_ratings_theme ON theme_ratings(themeId)');
+
+  // Create session_metrics table for token tracking
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_app TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      total_tokens INTEGER DEFAULT 0,
+      total_cost REAL DEFAULT 0.0,
+      message_count INTEGER DEFAULT 0,
+      start_time INTEGER,
+      end_time INTEGER,
+      model_name TEXT,
+      UNIQUE(source_app, session_id)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_metrics ON session_metrics(source_app, session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_metrics_session ON session_metrics(session_id)');
+
+  // Create tool_analytics table for tool success/failure tracking
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tool_analytics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_app TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      tool_name TEXT NOT NULL,
+      success INTEGER NOT NULL,
+      error_type TEXT,
+      error_message TEXT,
+      timestamp INTEGER NOT NULL,
+      event_id INTEGER,
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tool_analytics ON tool_analytics(tool_name, success)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tool_errors ON tool_analytics(error_type) WHERE success = 0');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tool_session ON tool_analytics(session_id)');
 }
 
 export function insertEvent(event: HookEvent): HookEvent {
   const stmt = db.prepare(`
-    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, token_count, estimated_cost)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const timestamp = event.timestamp || Date.now();
@@ -146,7 +197,9 @@ export function insertEvent(event: HookEvent): HookEvent {
     timestamp,
     event.humanInTheLoop ? JSON.stringify(event.humanInTheLoop) : null,
     humanInTheLoopStatus ? JSON.stringify(humanInTheLoopStatus) : null,
-    event.model_name || null
+    event.model_name || null,
+    event.token_count || null,
+    event.estimated_cost || null
   );
 
   return {
@@ -171,7 +224,7 @@ export function getFilterOptions(): FilterOptions {
 
 export function getRecentEvents(limit: number = 300): HookEvent[] {
   const stmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, token_count, estimated_cost
     FROM events
     ORDER BY timestamp DESC
     LIMIT ?
@@ -190,7 +243,9 @@ export function getRecentEvents(limit: number = 300): HookEvent[] {
     timestamp: row.timestamp,
     humanInTheLoop: row.humanInTheLoop ? JSON.parse(row.humanInTheLoop) : undefined,
     humanInTheLoopStatus: row.humanInTheLoopStatus ? JSON.parse(row.humanInTheLoopStatus) : undefined,
-    model_name: row.model_name || undefined
+    model_name: row.model_name || undefined,
+    token_count: row.token_count || undefined,
+    estimated_cost: row.estimated_cost || undefined
   })).reverse();
 }
 
@@ -361,7 +416,7 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
   stmt.run(JSON.stringify(status), id);
 
   const selectStmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, token_count, estimated_cost
     FROM events
     WHERE id = ?
   `);
@@ -380,8 +435,183 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
     timestamp: row.timestamp,
     humanInTheLoop: row.humanInTheLoop ? JSON.parse(row.humanInTheLoop) : undefined,
     humanInTheLoopStatus: row.humanInTheLoopStatus ? JSON.parse(row.humanInTheLoopStatus) : undefined,
-    model_name: row.model_name || undefined
+    model_name: row.model_name || undefined,
+    token_count: row.token_count || undefined,
+    estimated_cost: row.estimated_cost || undefined
   };
+}
+
+// Session Metrics functions
+export function upsertSessionMetrics(metrics: SessionMetrics): void {
+  const stmt = db.prepare(`
+    INSERT INTO session_metrics (source_app, session_id, total_tokens, total_cost, message_count, start_time, end_time, model_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(source_app, session_id) DO UPDATE SET
+      total_tokens = total_tokens + excluded.total_tokens,
+      total_cost = total_cost + excluded.total_cost,
+      message_count = message_count + excluded.message_count,
+      end_time = excluded.end_time,
+      model_name = COALESCE(excluded.model_name, model_name)
+  `);
+
+  stmt.run(
+    metrics.source_app,
+    metrics.session_id,
+    metrics.total_tokens,
+    metrics.total_cost,
+    metrics.message_count,
+    metrics.start_time || null,
+    metrics.end_time || null,
+    metrics.model_name || null
+  );
+}
+
+export function getSessionMetrics(sessionId: string): SessionMetrics | null {
+  const stmt = db.prepare('SELECT * FROM session_metrics WHERE session_id = ?');
+  const row = stmt.get(sessionId) as any;
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    total_tokens: row.total_tokens,
+    total_cost: row.total_cost,
+    message_count: row.message_count,
+    start_time: row.start_time,
+    end_time: row.end_time,
+    model_name: row.model_name
+  };
+}
+
+export function getAllSessionMetrics(sourceApp?: string): SessionMetrics[] {
+  let sql = 'SELECT * FROM session_metrics';
+  const params: any[] = [];
+
+  if (sourceApp) {
+    sql += ' WHERE source_app = ?';
+    params.push(sourceApp);
+  }
+
+  sql += ' ORDER BY end_time DESC NULLS LAST, start_time DESC NULLS LAST';
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    total_tokens: row.total_tokens,
+    total_cost: row.total_cost,
+    message_count: row.message_count,
+    start_time: row.start_time,
+    end_time: row.end_time,
+    model_name: row.model_name
+  }));
+}
+
+// Tool Analytics functions
+export function insertToolAnalytics(analytics: ToolAnalytics): void {
+  const stmt = db.prepare(`
+    INSERT INTO tool_analytics (source_app, session_id, tool_name, success, error_type, error_message, timestamp, event_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    analytics.source_app,
+    analytics.session_id,
+    analytics.tool_name,
+    analytics.success ? 1 : 0,
+    analytics.error_type || null,
+    analytics.error_message || null,
+    analytics.timestamp,
+    analytics.event_id || null
+  );
+}
+
+export function getToolStats(sessionId?: string, sourceApp?: string): ToolStats[] {
+  let sql = `
+    SELECT
+      tool_name,
+      COUNT(*) as total_uses,
+      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+      SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
+      ROUND(100.0 * SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) / COUNT(*), 2) as success_rate
+    FROM tool_analytics
+    WHERE 1=1
+  `;
+
+  const params: any[] = [];
+
+  if (sessionId) {
+    sql += ' AND session_id = ?';
+    params.push(sessionId);
+  }
+
+  if (sourceApp) {
+    sql += ' AND source_app = ?';
+    params.push(sourceApp);
+  }
+
+  sql += ' GROUP BY tool_name ORDER BY total_uses DESC';
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => {
+    // Get most common error for this tool
+    const errorStmt = db.prepare(`
+      SELECT error_type
+      FROM tool_analytics
+      WHERE tool_name = ? AND success = 0 AND error_type IS NOT NULL
+      ${sessionId ? 'AND session_id = ?' : ''}
+      ${sourceApp ? 'AND source_app = ?' : ''}
+      GROUP BY error_type
+      ORDER BY COUNT(*) DESC
+      LIMIT 1
+    `);
+
+    const errorParams: any[] = [row.tool_name];
+    if (sessionId) errorParams.push(sessionId);
+    if (sourceApp) errorParams.push(sourceApp);
+
+    const errorRow = errorStmt.get(...errorParams) as any;
+
+    return {
+      tool_name: row.tool_name,
+      total_uses: row.total_uses,
+      successes: row.successes,
+      failures: row.failures,
+      success_rate: row.success_rate,
+      most_common_error: errorRow?.error_type
+    };
+  });
+}
+
+export function getErrorSummary(limit: number = 10): ErrorSummary[] {
+  const stmt = db.prepare(`
+    SELECT
+      error_type,
+      tool_name,
+      COUNT(*) as count,
+      MAX(error_message) as recent_message
+    FROM tool_analytics
+    WHERE success = 0 AND error_type IS NOT NULL
+    GROUP BY error_type, tool_name
+    ORDER BY count DESC
+    LIMIT ?
+  `);
+
+  const rows = stmt.all(limit) as any[];
+
+  return rows.map(row => ({
+    error_type: row.error_type,
+    count: row.count,
+    tool_name: row.tool_name,
+    recent_message: row.recent_message
+  }));
 }
 
 export { db };
