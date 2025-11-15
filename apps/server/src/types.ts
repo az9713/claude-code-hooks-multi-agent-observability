@@ -180,3 +180,50 @@ export interface ErrorSummary {
   tool_name: string;
   recent_message?: string;
 }
+
+// Session Bookmarking & Tagging interfaces
+export interface SessionBookmark {
+  id?: number;
+  source_app: string;
+  session_id: string;
+  bookmarked: boolean;
+  bookmarked_at?: number;
+  notes?: string;
+}
+
+export interface SessionTag {
+  id?: number;
+  source_app: string;
+  session_id: string;
+  tag: string;
+  created_at: number;
+}
+
+// Agent Performance Metrics interfaces
+export interface PerformanceMetrics {
+  id?: number;
+  source_app: string;
+  session_id: string;
+  avg_response_time?: number; // milliseconds
+  tools_per_task?: number;
+  success_rate?: number; // percentage
+  session_duration?: number; // milliseconds
+  total_events: number;
+  total_tool_uses: number;
+  calculated_at: number;
+}
+
+// Event Pattern Detection interfaces
+export interface DetectedPattern {
+  id?: number;
+  source_app: string;
+  session_id: string;
+  pattern_type: string;
+  pattern_name: string;
+  description: string;
+  occurrences: number;
+  first_seen: number;
+  last_seen: number;
+  example_sequence?: string; // JSON string of event types
+  confidence_score?: number; // 0-100
+}

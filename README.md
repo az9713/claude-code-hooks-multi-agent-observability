@@ -287,6 +287,45 @@ Understand tool reliability and identify issues:
 
 **Analytics View**: Real-time success rates, failure patterns, and error summaries for all tools used by agents.
 
+### 🆕 Priority 1 Features (NEW!)
+
+#### ⭐ Session Bookmarking & Tagging
+Organize and categorize your important sessions:
+- **Bookmark Sessions**: Star sessions for quick access later
+- **Custom Tags**: Add descriptive tags to categorize sessions (e.g., "debugging", "production", "successful")
+- **Tag-Based Filtering**: Find sessions by tag across all projects
+- **Session Notes**: Add notes to bookmarked sessions for context
+- **Quick Access**: View all bookmarked sessions in dedicated dashboard
+
+**Bookmarks View**: Star important sessions and add custom tags for easy organization and retrieval.
+
+#### ⚡ Agent Performance Metrics
+Analyze and optimize AI agent performance:
+- **Response Time Tracking**: Monitor average time between agent actions
+- **Tools-Per-Task Analysis**: Understand tool usage efficiency
+- **Success Rate Monitoring**: Track overall agent effectiveness
+- **Session Duration Metrics**: See how long agents take to complete tasks
+- **Performance Dashboard**: Visual charts comparing sessions
+- **Trend Analysis**: Identify patterns in agent performance over time
+
+**Performance View**: Comprehensive metrics showing response times, success rates, and efficiency scores for all sessions.
+
+#### 🔍 Event Pattern Detection & Insights
+Automatically discover agent behavior patterns:
+- **Workflow Detection**: Identify common tool sequences (read-before-edit, search-then-read)
+- **Retry Pattern Analysis**: Detect when agents retry tools multiple times
+- **Confidence Scoring**: Pattern reliability ratings (0-100%)
+- **Pattern Trends**: See which patterns occur most frequently
+- **Example Sequences**: View actual tool sequences that triggered patterns
+- **Insights Dashboard**: Visual analysis of detected patterns across sessions
+
+**Pattern Types**:
+- **workflow**: Common work sequences (e.g., Read → Edit, Grep → Read)
+- **retry**: Tool retry attempts (same tool 3+ times)
+- **sequence**: Multi-step operation patterns
+
+**Patterns View**: Visual diagrams showing detected patterns with occurrence counts and confidence scores.
+
 ## 🎨 Event Types & Visualization
 
 | Event Type       | Emoji | Purpose                | Color Coding  | Special Display                       |

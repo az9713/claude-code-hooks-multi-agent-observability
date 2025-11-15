@@ -851,6 +851,270 @@ EOF
 
 ---
 
+### Task 6: Bookmark Important Sessions
+
+**Scenario**: You found an interesting agent session and want to save it for later.
+
+**Using the UI:**
+
+1. **Open the Dashboard** at `http://localhost:5173`
+2. **Find the session** you want to bookmark in the event timeline
+3. **Click the star icon** (☆) next to the session ID
+4. **The star turns gold** (★) indicating it's bookmarked
+5. **Access bookmarks** via the Bookmarks dashboard tab
+
+**Via API:**
+
+```bash
+# Bookmark a session
+curl -X POST http://localhost:4000/api/bookmarks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_app": "my-project",
+    "session_id": "abc123456",
+    "bookmarked": true,
+    "notes": "Great debugging example"
+  }'
+
+# View all bookmarks
+curl http://localhost:4000/api/bookmarks
+
+# Remove a bookmark
+curl -X DELETE http://localhost:4000/api/bookmarks/my-project/abc123456
+```
+
+**Why bookmark sessions?**
+- Save interesting debugging workflows
+- Mark successful task completions
+- Flag sessions that need review
+- Quick access to reference examples
+
+---
+
+### Task 7: Tag and Organize Sessions
+
+**Scenario**: You want to categorize sessions by type (debugging, testing, production, etc.)
+
+**Add tags via UI:**
+
+1. **Find a session** in the timeline
+2. **Open the Tag Editor** component
+3. **Type a tag name** (e.g., "debugging")
+4. **Press Enter** or click "Add"
+5. **Tags appear** with color coding
+
+**Manage tags via API:**
+
+```bash
+# Add a tag to a session
+curl -X POST http://localhost:4000/api/tags \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_app": "my-project",
+    "session_id": "abc123456",
+    "tag": "debugging"
+  }'
+
+# Get all tags for a session
+curl http://localhost:4000/api/tags/session/my-project/abc123456
+
+# Find sessions with a specific tag
+curl http://localhost:4000/api/tags/debugging/sessions
+
+# Get all available tags
+curl http://localhost:4000/api/tags/all
+
+# Remove a tag
+curl -X DELETE http://localhost:4000/api/tags/my-project/abc123456/debugging
+```
+
+**Common tags:**
+- `debugging` - Troubleshooting sessions
+- `successful` - Completed tasks
+- `error` - Failed attempts
+- `testing` - Test runs
+- `production` - Production deployments
+- `refactoring` - Code refactoring work
+
+---
+
+### Task 8: Analyze Agent Performance
+
+**Scenario**: You want to see how fast and efficient your agents are.
+
+**View performance metrics:**
+
+1. **Open the Performance Dashboard** tab
+2. **See overall metrics**:
+   - Average response time
+   - Success rate
+   - Tools per task
+3. **Compare sessions** side-by-side
+4. **Identify bottlenecks** and optimization opportunities
+
+**Calculate metrics via API:**
+
+```bash
+# Calculate metrics for a session
+curl -X POST http://localhost:4000/api/metrics/performance/calculate/my-project/abc123456
+
+# View metrics for a specific session
+curl http://localhost:4000/api/metrics/performance/my-project/abc123456
+
+# View all performance metrics
+curl http://localhost:4000/api/metrics/performance/all
+```
+
+**Response example:**
+
+```json
+{
+  "source_app": "my-project",
+  "session_id": "abc123456",
+  "avg_response_time": 1234.5,
+  "tools_per_task": 2.5,
+  "success_rate": 94.2,
+  "session_duration": 3600000,
+  "total_events": 45,
+  "total_tool_uses": 28
+}
+```
+
+**What the metrics mean:**
+
+- **avg_response_time**: How long between agent actions (ms) - Lower is faster
+- **tools_per_task**: Tools used per task - Shows efficiency
+- **success_rate**: Percentage of successful tool uses - Higher is better
+- **session_duration**: Total time from start to finish (ms)
+- **total_events**: Total actions taken
+- **total_tool_uses**: Total tools executed
+
+**Use cases:**
+- Compare agent models (Sonnet vs Haiku)
+- Optimize prompt engineering
+- Identify slow operations
+- Track improvements over time
+
+---
+
+### Task 9: Detect Agent Behavior Patterns
+
+**Scenario**: You want to understand common workflows your agents use.
+
+**View detected patterns:**
+
+1. **Open the Pattern Insights** dashboard
+2. **See trending patterns** across all sessions
+3. **Filter by pattern type** (workflow, retry, sequence)
+4. **View example sequences** to understand the pattern
+
+**Detect patterns via API:**
+
+```bash
+# Trigger pattern detection for a session
+curl -X POST http://localhost:4000/api/patterns/detect/my-project/abc123456
+
+# View patterns for a session
+curl http://localhost:4000/api/patterns/my-project/abc123456
+
+# Get trending patterns
+curl http://localhost:4000/api/patterns/trending?limit=10
+
+# View all patterns
+curl http://localhost:4000/api/patterns/all
+```
+
+**Common patterns detected:**
+
+**1. read-before-edit** (Workflow)
+```
+Read → Edit
+```
+Agent reads a file before editing it (safe practice)
+
+**2. search-then-read** (Workflow)
+```
+Grep/Glob → Read
+```
+Agent searches for files before reading them (efficient)
+
+**3. tool-retry** (Retry)
+```
+Bash → Bash → Bash
+```
+Agent retried same tool 3+ times (potential issue)
+
+**Pattern response example:**
+
+```json
+{
+  "pattern_type": "workflow",
+  "pattern_name": "read-before-edit",
+  "description": "Agent reads a file before editing it",
+  "occurrences": 15,
+  "confidence_score": 95,
+  "example_sequence": "[\"Read\", \"Edit\"]"
+}
+```
+
+**Why patterns matter:**
+- **Best practices**: See which workflows succeed
+- **Anti-patterns**: Detect retry loops and inefficiencies
+- **Learning**: Understand how agents solve problems
+- **Optimization**: Improve prompts based on patterns
+
+---
+
+### Task 10: Monitor Token Usage and Costs
+
+**Scenario**: You want to track API costs across your projects.
+
+**View cost dashboard:**
+
+1. **Open the Token Metrics** dashboard
+2. **See total costs** across all sessions
+3. **View per-session breakdown** with model names
+4. **Monitor spending** in real-time
+
+**Query via API:**
+
+```bash
+# Get all session metrics
+curl http://localhost:4000/api/metrics/sessions
+
+# Get metrics for specific session
+curl http://localhost:4000/api/metrics/session/abc123456
+```
+
+**Cost tracking is automatic** when using `--summarize` or `--add-chat` flags.
+
+**Pricing (per 1M tokens):**
+| Model | Input | Output |
+|-------|-------|--------|
+| Sonnet 4.5 | $3.00 | $15.00 |
+| Opus 4 | $15.00 | $75.00 |
+| Haiku 4 | $0.25 | $1.25 |
+
+**Example output:**
+
+```json
+{
+  "session_id": "abc123456",
+  "total_tokens": 15234,
+  "total_cost": 0.0457,
+  "message_count": 12,
+  "model_name": "claude-sonnet-4-5"
+}
+```
+
+**Use cost data to:**
+- Budget API spending
+- Compare model costs
+- Optimize prompt efficiency
+- Track costs per project
+
+---
+
 ## Next Steps
 
 ### Learn More
