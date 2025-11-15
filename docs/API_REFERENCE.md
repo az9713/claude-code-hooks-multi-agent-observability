@@ -1804,6 +1804,458 @@ interface HookEvent {
 
 ---
 
+## Priority 2 & 3 Features API
+
+### Webhook/Alert System API (Priority 2)
+
+#### POST /api/webhooks
+Create a new webhook for event notifications.
+
+**Request:**
+```http
+POST /api/webhooks HTTP/1.1
+Host: localhost:4000
+Content-Type: application/json
+
+{
+  "name": "Slack Notifications",
+  "url": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK",
+  "event_type": "*",
+  "source_app": "my-app",
+  "enabled": true,
+  "secret": "your-secret-key",
+  "filters": {
+    "tool_names": ["Bash", "Edit"],
+    "error_types": ["permission_error"]
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "success": true
+}
+```
+
+**Status Codes:**
+- 201: Webhook created successfully
+- 400: Invalid request (missing required fields)
+
+---
+
+#### GET /api/webhooks
+List all webhooks with delivery statistics.
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "name": "Slack Notifications",
+    "url": "https://hooks.slack.com/...",
+    "event_type": "*",
+    "source_app": "my-app",
+    "enabled": true,
+    "created_at": 1705240800000,
+    "total": 150,
+    "success_count": 145,
+    "failed_count": 5
+  }
+]
+```
+
+---
+
+#### PUT /api/webhooks/:id
+Update an existing webhook.
+
+**Request:**
+```json
+{
+  "name": "Updated Webhook Name",
+  "enabled": false
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+**Status Codes:**
+- 200: Webhook updated
+- 404: Webhook not found
+
+---
+
+#### DELETE /api/webhooks/:id
+Delete a webhook.
+
+**Status Codes:**
+- 200: Webhook deleted
+- 404: Webhook not found
+
+---
+
+#### GET /api/webhooks/:id/deliveries
+Get delivery history for a webhook.
+
+**Query Parameters:**
+- `limit` (optional): Number of deliveries to return (default: 50)
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "webhook_id": 1,
+    "event_id": 234,
+    "status": "success",
+    "response_code": 200,
+    "attempted_at": 1705240800000,
+    "retry_count": 0
+  }
+]
+```
+
+---
+
+### Session Export API (Priority 2)
+
+#### GET /api/export/session/:sessionId
+Export session data in multiple formats.
+
+**Query Parameters:**
+- `format`: Export format (`json`, `markdown`, `html`) - default: `json`
+- `source_app` (optional): Filter by source application
+
+**Examples:**
+
+**Export as JSON:**
+```http
+GET /api/export/session/abc123?format=json HTTP/1.1
+```
+
+**Export as Markdown:**
+```http
+GET /api/export/session/abc123?format=markdown HTTP/1.1
+```
+
+**Export as HTML:**
+```http
+GET /api/export/session/abc123?format=html HTTP/1.1
+```
+
+**Response:** File download with appropriate Content-Type and Content-Disposition headers.
+
+**Status Codes:**
+- 200: Session exported successfully
+- 404: Session not found
+
+---
+
+### Session Comparison API (Priority 2)
+
+#### POST /api/comparisons
+Create a new session comparison.
+
+**Request:**
+```json
+{
+  "name": "Sonnet vs Haiku Performance",
+  "description": "Comparing model performance on same task",
+  "session_ids": ["session-1", "session-2", "session-3"],
+  "created_by": "user@example.com"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "success": true
+}
+```
+
+---
+
+#### GET /api/comparisons
+List all saved comparisons.
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "name": "Sonnet vs Haiku Performance",
+    "description": "Comparing model performance",
+    "session_ids": ["session-1", "session-2"],
+    "created_at": 1705240800000,
+    "created_by": "user@example.com"
+  }
+]
+```
+
+---
+
+#### GET /api/comparisons/analyze
+Analyze and compare multiple sessions.
+
+**Query Parameters:**
+- `sessions`: Array of session IDs to compare (minimum 2)
+
+**Example:**
+```http
+GET /api/comparisons/analyze?sessions=session-1&sessions=session-2 HTTP/1.1
+```
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "source_app": "my-app",
+      "session_id": "session-1",
+      "duration": 120000,
+      "event_count": 45,
+      "tool_count": 12
+    }
+  ],
+  "metrics_comparison": {
+    "response_times": [1200, 850],
+    "token_usage": [15000, 12000],
+    "costs": [0.045, 0.036],
+    "tool_counts": [12, 10],
+    "success_rates": [95.5, 98.2],
+    "winner": "session-2"
+  },
+  "pattern_differences": [],
+  "tool_usage_comparison": {},
+  "efficiency_score": {
+    "by_session": [0.1, 0.12],
+    "overall_winner": "session-2"
+  },
+  "recommendations": [
+    "Session 'my-app:session-2' had the best overall performance",
+    "Average cost across sessions: $0.0405"
+  ]
+}
+```
+
+---
+
+#### POST /api/comparisons/:id/notes
+Add a note to a comparison.
+
+**Request:**
+```json
+{
+  "note": "Session 2 performed better due to more efficient tool usage"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "success": true
+}
+```
+
+---
+
+#### GET /api/comparisons/:id/notes
+Get all notes for a comparison.
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "comparison_id": 1,
+    "note": "Session 2 performed better",
+    "timestamp": 1705240800000
+  }
+]
+```
+
+---
+
+### Decision Tree API (Priority 3)
+
+#### GET /api/decision-tree/session/:sessionId
+Get decision tree visualization data for a session.
+
+**Query Parameters:**
+- `source_app` (optional): Filter by source application
+
+**Response:**
+```json
+{
+  "nodes": [
+    {
+      "id": "node_0",
+      "type": "prompt",
+      "label": "User Prompt: Fix the bug in...",
+      "timestamp": 1705240800000,
+      "event_id": 1
+    },
+    {
+      "id": "node_1",
+      "type": "tool",
+      "label": "Read",
+      "timestamp": 1705240801000,
+      "event_id": 2,
+      "metadata": { "file_path": "src/app.ts" }
+    },
+    {
+      "id": "node_2",
+      "type": "result",
+      "label": "Tool Result",
+      "timestamp": 1705240802000,
+      "event_id": 3
+    }
+  ],
+  "edges": [
+    {
+      "from": "node_0",
+      "to": "node_1",
+      "type": "uses",
+      "label": "Read"
+    },
+    {
+      "from": "node_1",
+      "to": "node_2",
+      "type": "produces",
+      "label": "Tool Result"
+    }
+  ],
+  "root": "node_0"
+}
+```
+
+**Node Types:**
+- `prompt`: User prompt submission
+- `tool`: Tool execution
+- `result`: Tool result
+- `completion`: Response completion
+
+**Edge Types:**
+- `triggers`: Prompt triggers action
+- `uses`: Uses a tool
+- `produces`: Produces a result
+- `leads_to`: Leads to completion
+
+---
+
+### Agent Collaboration API (Priority 3)
+
+#### POST /api/collaboration/relationships
+Create a parent-child agent relationship.
+
+**Request:**
+```json
+{
+  "parent_source_app": "main-app",
+  "parent_session_id": "parent-123",
+  "child_source_app": "sub-app",
+  "child_session_id": "child-456",
+  "relationship_type": "subagent",
+  "task_description": "Process user authentication",
+  "delegation_reason": "Specialized authentication handling",
+  "started_at": 1705240800000,
+  "completed_at": 1705240900000
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "success": true
+}
+```
+
+---
+
+#### GET /api/collaboration/session/:sessionId/hierarchy
+Get the full agent hierarchy for a session.
+
+**Response:**
+```json
+{
+  "source_app": "main-app",
+  "session_id": "parent-123",
+  "children": [
+    {
+      "source_app": "sub-app",
+      "session_id": "child-456",
+      "children": [],
+      "metrics": {
+        "total_events": 25,
+        "duration": 60000,
+        "tool_count": 8,
+        "depth": 1
+      },
+      "task_description": "Process user authentication"
+    }
+  ],
+  "metrics": {
+    "total_events": 50,
+    "duration": 120000,
+    "tool_count": 15,
+    "depth": 0
+  }
+}
+```
+
+---
+
+#### GET /api/collaboration/session/:sessionId/children
+Get direct child sessions of a parent session.
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "parent_source_app": "main-app",
+    "parent_session_id": "parent-123",
+    "child_source_app": "sub-app",
+    "child_session_id": "child-456",
+    "relationship_type": "subagent",
+    "task_description": "Process authentication",
+    "created_at": 1705240800000
+  }
+]
+```
+
+---
+
+#### GET /api/collaboration/relationships/all
+Get all agent relationships in the system.
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "parent_source_app": "main-app",
+    "parent_session_id": "parent-123",
+    "child_source_app": "sub-app",
+    "child_session_id": "child-456",
+    "relationship_type": "subagent",
+    "created_at": 1705240800000
+  }
+]
+```
+
+---
+
 ## Best Practices
 
 ### For Hook Scripts

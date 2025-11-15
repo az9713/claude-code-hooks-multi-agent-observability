@@ -227,3 +227,171 @@ export interface DetectedPattern {
   example_sequence?: string; // JSON string of event types
   confidence_score?: number; // 0-100
 }
+
+// Webhook/Alert System interfaces (P2)
+export interface Webhook {
+  id?: number;
+  name: string;
+  url: string;
+  event_type: string; // 'PreToolUse', 'Stop', 'Error', '*' for all
+  source_app?: string; // Optional: filter by app
+  enabled: boolean;
+  secret?: string; // For signature verification
+  created_at: number;
+  filters?: WebhookFilters;
+}
+
+export interface WebhookFilters {
+  tool_names?: string[]; // Only trigger for specific tools
+  error_types?: string[]; // Only trigger for specific errors
+  session_ids?: string[]; // Only trigger for specific sessions
+}
+
+export interface WebhookDelivery {
+  id?: number;
+  webhook_id: number;
+  event_id: number;
+  status: 'pending' | 'success' | 'failed';
+  response_code?: number;
+  response_body?: string;
+  attempted_at: number;
+  retry_count?: number;
+}
+
+// Session Export interfaces (P2)
+export interface ExportOptions {
+  includeChat?: boolean;
+  includeMetrics?: boolean;
+  includePatterns?: boolean;
+  includeAnalytics?: boolean;
+}
+
+// Session Comparison interfaces (P2)
+export interface SessionComparison {
+  id?: number;
+  name: string;
+  description?: string;
+  session_ids: string; // JSON array
+  created_at: number;
+  created_by?: string;
+}
+
+export interface ComparisonNote {
+  id?: number;
+  comparison_id: number;
+  note: string;
+  timestamp: number;
+}
+
+export interface ComparisonResult {
+  sessions: SessionSummary[];
+  metrics_comparison: MetricsComparison;
+  pattern_differences: PatternDifference[];
+  tool_usage_comparison: ToolUsageComparison;
+  efficiency_score: EfficiencyScore;
+  recommendations: string[];
+}
+
+export interface SessionSummary {
+  source_app: string;
+  session_id: string;
+  model_name?: string;
+  duration: number;
+  event_count: number;
+  prompt_count: number;
+  tool_count: number;
+  start_time: number;
+  end_time?: number;
+}
+
+export interface MetricsComparison {
+  response_times: number[];
+  token_usage: number[];
+  costs: number[];
+  tool_counts: number[];
+  success_rates: number[];
+  winner?: string; // session_id of best overall
+}
+
+export interface PatternDifference {
+  pattern_id: string;
+  occurrences_by_session: number[];
+  variance: number;
+}
+
+export interface ToolUsageComparison {
+  tools: string[];
+  usage_by_session: { [tool: string]: number[] };
+}
+
+export interface EfficiencyScore {
+  by_session: number[];
+  overall_winner?: string;
+}
+
+// Decision Tree interfaces (P3)
+export interface DecisionNode {
+  id: string;
+  type: 'prompt' | 'decision' | 'tool' | 'result' | 'completion';
+  label: string;
+  timestamp: number;
+  event_id?: number;
+  metadata?: any;
+}
+
+export interface DecisionEdge {
+  from: string;
+  to: string;
+  type: 'triggers' | 'uses' | 'produces' | 'leads_to';
+  label?: string;
+}
+
+export interface DecisionTree {
+  nodes: DecisionNode[];
+  edges: DecisionEdge[];
+  root: string;
+}
+
+// Multi-Agent Collaboration interfaces (P3)
+export interface AgentRelationship {
+  id?: number;
+  parent_source_app: string;
+  parent_session_id: string;
+  child_source_app: string;
+  child_session_id: string;
+  relationship_type: string; // 'subagent', 'parallel', 'sequential'
+  task_description?: string;
+  delegation_reason?: string;
+  started_at?: number;
+  completed_at?: number;
+  created_at: number;
+}
+
+export interface AgentNode {
+  source_app: string;
+  session_id: string;
+  children: AgentNode[];
+  metrics: {
+    total_events: number;
+    duration: number;
+    tool_count: number;
+    depth: number;
+  };
+  task_description?: string;
+}
+
+export interface CollaborationAnalysis {
+  max_depth: number;
+  total_agents: number;
+  avg_children_per_node: number;
+  parallel_work_detected: boolean;
+  task_decomposition_quality: number;
+  collaboration_efficiency: number;
+}
+
+export interface CollaborationMetric {
+  id?: number;
+  relationship_id: number;
+  metric_type: string; // 'duration', 'depth', 'breadth', 'efficiency'
+  metric_value: number;
+}

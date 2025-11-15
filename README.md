@@ -326,6 +326,82 @@ Automatically discover agent behavior patterns:
 
 **Patterns View**: Visual diagrams showing detected patterns with occurrence counts and confidence scores.
 
+### 🆕 Priority 2 Features (NEW!)
+
+#### 🔔 Webhook/Alert System
+Get real-time notifications when critical events occur:
+- **Custom Webhooks**: Configure webhooks to trigger on specific events (e.g., errors, tool failures, Stop events)
+- **Event Filtering**: Filter by tool names, error types, sessions, or source apps
+- **Delivery Tracking**: Monitor webhook delivery success/failure rates
+- **Retry Logic**: Automatic retry for failed deliveries
+- **Slack/Discord Integration**: Send alerts to team channels
+- **Secret Signing**: Secure webhook payloads with HMAC signatures
+- **Enable/Disable**: Toggle webhooks on/off without deletion
+
+**Use Cases**: Get Slack alerts on production errors, Discord notifications when expensive API calls occur, email alerts for session failures.
+
+#### 📊 Session Export & Reports
+Export complete session data for documentation and sharing:
+- **Multiple Formats**: Export as JSON, Markdown, or HTML
+- **Comprehensive Data**: Includes events, metrics, performance data, patterns, and analytics
+- **Professional Reports**: Beautifully formatted HTML reports with charts
+- **Markdown Documentation**: Human-readable session summaries
+- **JSON for Analysis**: Raw data for custom processing and analysis
+- **Selective Export**: Choose what data to include (chat, metrics, patterns, analytics)
+
+**Use Cases**: Document successful workflows, share session reports with team, analyze patterns offline, create training materials.
+
+#### 🔍 Session Comparison View
+Compare multiple agent sessions side-by-side:
+- **Multi-Session Analysis**: Compare 2+ sessions simultaneously
+- **Performance Comparison**: See which session was more efficient
+- **Cost Analysis**: Compare token usage and costs across sessions
+- **Tool Usage Patterns**: Identify which session used tools more effectively
+- **Pattern Differences**: Detect behavioral variances between sessions
+- **Winner Detection**: Automatic identification of best-performing session
+- **Save Comparisons**: Bookmark comparisons for future reference
+- **Add Notes**: Annotate comparisons with insights and observations
+
+**Use Cases**: Compare Sonnet vs Haiku performance, analyze before/after optimization, identify regression in agent behavior, A/B test prompting strategies.
+
+### 🆕 Priority 3 Features (NEW!)
+
+#### 🌳 Decision Tree Visualization
+Visualize agent decision-making processes as interactive trees:
+- **Node Types**: Prompts, tool uses, results, and completions
+- **Edge Relationships**: Triggers, uses, produces, leads-to connections
+- **Event Timeline**: Chronological flow of agent decisions
+- **Interactive Exploration**: Click nodes to see event details
+- **Tool Sequences**: Visualize complex multi-step workflows
+- **D3.js Powered**: Professional, interactive tree diagrams
+- **Metadata Access**: View tool inputs/outputs on nodes
+
+**Node Types**:
+- **prompt**: User prompt submissions
+- **tool**: Tool execution steps
+- **result**: Tool completion results
+- **completion**: Final response completion
+
+**Use Cases**: Debug complex agent workflows, understand decision paths, identify inefficient sequences, document agent behavior patterns.
+
+#### 👥 Multi-Agent Collaboration Tracking
+Track and visualize hierarchies of multi-agent systems:
+- **Parent-Child Relationships**: Track when agents spawn subagents
+- **Hierarchy Visualization**: See full agent trees with depth metrics
+- **Task Delegation**: Record why and what tasks were delegated
+- **Collaboration Metrics**: Measure efficiency of multi-agent workflows
+- **Relationship Types**: Subagent, parallel, sequential collaboration modes
+- **Depth Analysis**: Understand multi-level agent nesting
+- **Task Descriptions**: Document what each subagent was tasked with
+- **Timeline Tracking**: See when subagents started and completed
+
+**Relationship Types**:
+- **subagent**: Parent delegates subtask to child
+- **parallel**: Multiple agents work simultaneously
+- **sequential**: Agents execute in sequence
+
+**Use Cases**: Monitor agent orchestration systems, optimize task delegation strategies, measure multi-agent efficiency, debug agent collaboration issues.
+
 ## 🎨 Event Types & Visualization
 
 | Event Type       | Emoji | Purpose                | Color Coding  | Special Display                       |
