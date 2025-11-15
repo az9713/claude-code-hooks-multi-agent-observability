@@ -1933,8 +1933,22 @@ Export session data in multiple formats.
 - `format`: Export format (`json`, `markdown`, `html`) - default: `json`
 - `source_app` (optional): Filter by source application
 
-**Data Isolation:**
-All exported data (events, metrics, performance, patterns, analytics, bookmarks, tags) is properly filtered by `source_app` to prevent data leakage between different applications using the same session ID. If `source_app` is provided in the query, only events from that app are exported. Otherwise, the `source_app` from the first matching event is used to filter all auxiliary data.
+**Data Isolation & Security:**
+All exported data (events, metrics, performance, patterns, analytics, bookmarks, tags) is properly filtered by `source_app` to prevent data leakage between different applications using the same session ID.
+
+**Implementation Details:**
+- When `source_app` is provided in the query, only data from that app is exported
+- When `source_app` is not provided, the system automatically derives it from the first matching event
+- **ALL** queries (including events) are filtered by both `session_id` AND `source_app` to ensure complete tenant isolation
+
+**Security Note:**
+Multiple data leakage vulnerabilities were discovered and fixed by **Codex Code Review**, including:
+1. Events query not filtering by `source_app` when parameter not provided (critical - cross-tenant data exposure)
+2. Auxiliary queries (metrics, performance, patterns, analytics, bookmarks, tags) only filtering by `session_id`
+3. SQLite compatibility issues with PostgreSQL-specific `NULLS LAST` syntax
+4. JSON parsing errors in pattern detection causing runtime failures
+
+All issues have been resolved to ensure complete data isolation in multi-tenant deployments.
 
 **Examples:**
 
