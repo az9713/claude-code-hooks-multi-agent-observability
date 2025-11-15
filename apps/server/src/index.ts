@@ -1,5 +1,17 @@
-import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse } from './db';
-import type { HookEvent, HumanInTheLoopResponse } from './types';
+import {
+  initDatabase,
+  insertEvent,
+  getFilterOptions,
+  getRecentEvents,
+  updateEventHITLResponse,
+  upsertSessionMetrics,
+  getSessionMetrics,
+  getAllSessionMetrics,
+  insertToolAnalytics,
+  getToolStats,
+  getErrorSummary
+} from './db';
+import type { HookEvent, HumanInTheLoopResponse, SessionMetrics, ToolAnalytics } from './types';
 import { 
   createTheme, 
   updateThemeById, 
@@ -124,7 +136,7 @@ const server = Bun.serve({
     if (url.pathname === '/events' && req.method === 'POST') {
       try {
         const event: HookEvent = await req.json();
-        
+
         // Validate required fields
         if (!event.source_app || !event.session_id || !event.hook_event_type || !event.payload) {
           return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -132,10 +144,31 @@ const server = Bun.serve({
             headers: { ...headers, 'Content-Type': 'application/json' }
           });
         }
-        
+
         // Insert event into database
         const savedEvent = insertEvent(event);
-        
+
+        // Update session metrics if we have token/cost data
+        if (event.token_count || event.estimated_cost) {
+          const metrics: SessionMetrics = {
+            source_app: event.source_app,
+            session_id: event.session_id,
+            total_tokens: event.token_count || 0,
+            total_cost: event.estimated_cost || 0,
+            message_count: 1,
+            model_name: event.model_name
+          };
+
+          // Set start/end times based on event type
+          if (event.hook_event_type === 'SessionStart') {
+            metrics.start_time = event.timestamp || Date.now();
+          } else if (event.hook_event_type === 'SessionEnd' || event.hook_event_type === 'Stop') {
+            metrics.end_time = event.timestamp || Date.now();
+          }
+
+          upsertSessionMetrics(metrics);
+        }
+
         // Broadcast to all WebSocket clients
         const message = JSON.stringify({ type: 'event', data: savedEvent });
         wsClients.forEach(client => {
@@ -146,7 +179,7 @@ const server = Bun.serve({
             wsClients.delete(client);
           }
         });
-        
+
         return new Response(JSON.stringify(savedEvent), {
           headers: { ...headers, 'Content-Type': 'application/json' }
         });
@@ -404,7 +437,93 @@ const server = Bun.serve({
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
     }
-    
+
+    // Token Metrics API endpoints
+
+    // GET /api/metrics/session/:sessionId - Get session metrics
+    if (url.pathname.match(/^\/api\/metrics\/session\/[^\/]+$/) && req.method === 'GET') {
+      const sessionId = url.pathname.split('/')[4];
+      const metrics = getSessionMetrics(sessionId);
+
+      if (!metrics) {
+        return new Response(JSON.stringify({ error: 'Session metrics not found' }), {
+          status: 404,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify(metrics), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /api/metrics/sessions - Get all session metrics
+    if (url.pathname === '/api/metrics/sessions' && req.method === 'GET') {
+      const sourceApp = url.searchParams.get('source_app') || undefined;
+      const metrics = getAllSessionMetrics(sourceApp);
+
+      return new Response(JSON.stringify(metrics), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Tool Analytics API endpoints
+
+    // POST /api/analytics/tools - Insert tool analytics
+    if (url.pathname === '/api/analytics/tools' && req.method === 'POST') {
+      try {
+        const analytics: ToolAnalytics = await req.json();
+
+        // Validate required fields
+        if (!analytics.source_app || !analytics.session_id || !analytics.tool_name || analytics.success === undefined) {
+          return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+            status: 400,
+            headers: { ...headers, 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Set timestamp if not provided
+        if (!analytics.timestamp) {
+          analytics.timestamp = Date.now();
+        }
+
+        insertToolAnalytics(analytics);
+
+        return new Response(JSON.stringify({ success: true }), {
+          status: 201,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Error inserting tool analytics:', error);
+        return new Response(JSON.stringify({ error: 'Invalid request' }), {
+          status: 400,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // GET /api/analytics/tools/stats - Get tool statistics
+    if (url.pathname === '/api/analytics/tools/stats' && req.method === 'GET') {
+      const sessionId = url.searchParams.get('session_id') || undefined;
+      const sourceApp = url.searchParams.get('source_app') || undefined;
+
+      const stats = getToolStats(sessionId, sourceApp);
+
+      return new Response(JSON.stringify(stats), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /api/analytics/errors/summary - Get error summary
+    if (url.pathname === '/api/analytics/errors/summary' && req.method === 'GET') {
+      const limit = parseInt(url.searchParams.get('limit') || '10');
+      const errors = getErrorSummary(limit);
+
+      return new Response(JSON.stringify(errors), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
     // WebSocket upgrade
     if (url.pathname === '/stream') {
       const success = server.upgrade(req);

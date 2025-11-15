@@ -100,7 +100,9 @@ Now your project will send events to the observability system whenever Claude Co
 
 ## 🚀 Quick Start
 
-You can quickly view how this works by running this repositories .claude setup.
+**New to this? Start with the [Complete Installation Guide](INSTALLATION.md)** - A step-by-step guide assuming zero prior experience!
+
+**Already have prerequisites installed?** Use the quick start below:
 
 ```bash
 # 1. Start both server and client
@@ -116,6 +118,8 @@ Run git ls-files to understand the codebase.
 # 5. Copy the .claude folder to other projects you want to emit events from.
 cp -R .claude <directory of your codebase you want to emit events from>
 ```
+
+**Need detailed installation instructions?** See [INSTALLATION.md](INSTALLATION.md) for complete setup with zero assumptions.
 
 ## 📁 Project Structure
 
@@ -249,6 +253,39 @@ Vue 3 application with real-time visualization:
    - Stores in SQLite with timestamp
    - Broadcasts to WebSocket clients
 6. **Client Update**: Vue app receives event and updates timeline in real-time
+
+## ✨ Features
+
+### Core Features
+
+- **Real-Time Monitoring**: Watch AI agents work through WebSocket connections
+- **Multi-Agent Support**: Monitor multiple concurrent agents across different projects
+- **Event Filtering**: Filter by app, session, or event type
+- **Live Pulse Chart**: Visualize agent activity with real-time charts
+- **Chat Transcripts**: View full conversation history for each session
+- **Theme System**: Customize the UI with built-in or custom themes
+
+### 🆕 Priority 0 Features (NEW!)
+
+#### 💰 Token Usage & Cost Tracking
+Monitor and track the API costs of your AI agents in real-time:
+- **Real-Time Cost Calculation**: Automatic token counting and cost estimation
+- **Session Metrics**: Track tokens and costs per session
+- **Model-Specific Pricing**: Accurate pricing for Sonnet, Opus, and Haiku models
+- **Cost Dashboard**: Visual metrics showing total usage and costs
+- **Budget Monitoring**: Keep track of API spending across all projects
+
+**Dashboard View**: See total tokens used, estimated costs, and per-session breakdowns at a glance.
+
+#### 🔧 Tool Success/Failure Analytics
+Understand tool reliability and identify issues:
+- **Success Rate Tracking**: Monitor which tools succeed or fail
+- **Error Classification**: Automatic categorization of errors (permission, not found, timeout, etc.)
+- **Tool Statistics**: See usage patterns and reliability metrics
+- **Error Summary**: View most common errors across all tools
+- **Reliability Dashboard**: Visual charts showing tool performance
+
+**Analytics View**: Real-time success rates, failure patterns, and error summaries for all tools used by agents.
 
 ## 🎨 Event Types & Visualization
 
@@ -387,29 +424,33 @@ This ensures your hooks work correctly regardless of where Claude Code is execut
 
 Comprehensive guides to help you learn and master this AI agentic coding system:
 
-### Getting Started
+### Installation & Setup
+- **[Installation Guide](INSTALLATION.md)** - ⭐ **START HERE** - Complete setup guide assuming zero technical knowledge
 - **[Getting Started Guide](docs/GETTING_STARTED.md)** - Perfect for beginners! Complete walkthrough from installation to your first agent
 - **[Integration Guide](docs/INTEGRATION_GUIDE.md)** - Step-by-step instructions to integrate observability into your projects
 
 ### Reference Documentation
-- **[API Reference](docs/API_REFERENCE.md)** - Complete HTTP and WebSocket API documentation with examples
+- **[API Reference](docs/API_REFERENCE.md)** - Complete HTTP and WebSocket API documentation with examples (updated with new endpoints)
 - **[Architecture Deep Dive](docs/ARCHITECTURE.md)** - Detailed system architecture and design principles
 - **[Code Walkthrough](docs/CODE_WALKTHROUGH.md)** - Line-by-line explanation of key components
 
 ### Development Guides
 - **[Hook Development Guide](docs/HOOK_DEVELOPMENT.md)** - Create custom hooks for your specific needs
 - **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Solutions to common issues and debugging techniques
+- **[Roadmap](Roadmap.md)** - Future features and development plans
 
 ### Quick Links
 | I want to... | Read this guide |
 |--------------|----------------|
-| Get started from scratch | [Getting Started](docs/GETTING_STARTED.md) |
+| Install from scratch (zero experience) | [Installation Guide](INSTALLATION.md) ⭐ |
+| Get started quickly | [Getting Started](docs/GETTING_STARTED.md) |
 | Add observability to my project | [Integration Guide](docs/INTEGRATION_GUIDE.md) |
 | Create a custom hook | [Hook Development](docs/HOOK_DEVELOPMENT.md) |
 | Understand the architecture | [Architecture](docs/ARCHITECTURE.md) |
 | Understand the code | [Code Walkthrough](docs/CODE_WALKTHROUGH.md) |
 | Call the API programmatically | [API Reference](docs/API_REFERENCE.md) |
 | Fix a problem | [Troubleshooting](docs/TROUBLESHOOTING.md) |
+| See future features | [Roadmap](Roadmap.md) |
 
 ---
 

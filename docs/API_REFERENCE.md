@@ -354,6 +354,321 @@ Content-Type: application/json
 
 ---
 
+### Token Metrics API
+
+Track token usage and API costs across sessions.
+
+#### GET /api/metrics/session/:sessionId
+
+Get token metrics for a specific session.
+
+**Purpose**: Retrieve token count and cost data for a single session
+
+**Request:**
+
+```http
+GET /api/metrics/session/a1b2c3d4-e5f6-7890 HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+{
+  "id": 1,
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "total_tokens": 15234,
+  "total_cost": 0.0457,
+  "message_count": 12,
+  "start_time": 1705240800000,
+  "end_time": 1705244400000,
+  "model_name": "claude-sonnet-4-5"
+}
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 404 | Session not found |
+| 500 | Server error |
+
+---
+
+#### GET /api/metrics/sessions
+
+Get metrics for all sessions, optionally filtered by source app.
+
+**Purpose**: Retrieve all session metrics for analysis
+
+**Request:**
+
+```http
+GET /api/metrics/sessions?source_app=my-project HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| source_app | string | No | Filter by application name |
+
+**Response:**
+
+```json
+[
+  {
+    "id": 1,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-...",
+    "total_tokens": 15234,
+    "total_cost": 0.0457,
+    "message_count": 12,
+    "start_time": 1705240800000,
+    "end_time": 1705244400000,
+    "model_name": "claude-sonnet-4-5"
+  },
+  {
+    "id": 2,
+    "source_app": "another-project",
+    "total_tokens": 8421,
+    "total_cost": 0.0253,
+    "message_count": 7,
+    "model_name": "claude-haiku-4"
+  }
+]
+```
+
+**Cost Calculation:**
+
+Costs are calculated using the following pricing (per 1M tokens):
+
+| Model | Input Cost | Output Cost |
+|-------|------------|-------------|
+| claude-sonnet-4-5 | $3.00 | $15.00 |
+| claude-opus-4 | $15.00 | $75.00 |
+| claude-haiku-4 | $0.25 | $1.25 |
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+### Tool Analytics API
+
+Track tool success/failure rates and error patterns.
+
+#### POST /api/analytics/tools
+
+Submit tool analytics data.
+
+**Purpose**: Record tool execution results for analysis
+
+**Request:**
+
+```http
+POST /api/analytics/tools HTTP/1.1
+Host: localhost:4000
+Content-Type: application/json
+
+{
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "tool_name": "Bash",
+  "success": false,
+  "error_type": "permission_error",
+  "error_message": "Permission denied: cannot execute command",
+  "timestamp": 1705240800000,
+  "event_id": 123
+}
+```
+
+**Request Body Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| source_app | string | Yes | Application identifier |
+| session_id | string | Yes | Session UUID |
+| tool_name | string | Yes | Name of the tool used |
+| success | boolean | Yes | Whether tool execution succeeded |
+| error_type | string | No | Classification of error |
+| error_message | string | No | Detailed error message (max 500 chars) |
+| timestamp | number | No | Unix timestamp in milliseconds |
+| event_id | number | No | Related event ID |
+
+**Error Types:**
+
+| Error Type | Description |
+|-----------|-------------|
+| permission_error | Permission denied or access forbidden |
+| not_found_error | File or resource not found |
+| timeout_error | Operation timed out |
+| syntax_error | Syntax or parsing error |
+| network_error | Network connection issue |
+| command_not_found | Command or tool not available |
+| memory_error | Out of memory |
+| disk_error | Disk space or I/O error |
+| invalid_argument | Invalid input or argument |
+| unknown_error | Unclassified error |
+
+**Response:**
+
+```json
+{
+  "success": true
+}
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 201 | Analytics recorded |
+| 400 | Missing required fields or invalid data |
+| 500 | Server error |
+
+---
+
+#### GET /api/analytics/tools/stats
+
+Get tool usage statistics and success rates.
+
+**Purpose**: Analyze tool reliability across sessions
+
+**Request:**
+
+```http
+GET /api/analytics/tools/stats?session_id=abc123&source_app=my-project HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| session_id | string | No | Filter by specific session |
+| source_app | string | No | Filter by application |
+
+**Response:**
+
+```json
+[
+  {
+    "tool_name": "Bash",
+    "total_uses": 234,
+    "successes": 198,
+    "failures": 36,
+    "success_rate": 84.62,
+    "most_common_error": "permission_error"
+  },
+  {
+    "tool_name": "Read",
+    "total_uses": 456,
+    "successes": 450,
+    "failures": 6,
+    "success_rate": 98.68,
+    "most_common_error": "not_found_error"
+  },
+  {
+    "tool_name": "Write",
+    "total_uses": 89,
+    "successes": 87,
+    "failures": 2,
+    "success_rate": 97.75,
+    "most_common_error": "permission_error"
+  }
+]
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| tool_name | string | Name of the tool |
+| total_uses | number | Total number of times used |
+| successes | number | Number of successful executions |
+| failures | number | Number of failed executions |
+| success_rate | number | Percentage of successful uses (0-100) |
+| most_common_error | string | Most frequent error type (if any) |
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+#### GET /api/analytics/errors/summary
+
+Get a summary of the most common errors.
+
+**Purpose**: Identify patterns in tool failures
+
+**Request:**
+
+```http
+GET /api/analytics/errors/summary?limit=10 HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| limit | number | No | Maximum number of errors to return (default: 10) |
+
+**Response:**
+
+```json
+[
+  {
+    "error_type": "permission_error",
+    "count": 45,
+    "tool_name": "Bash",
+    "recent_message": "Permission denied: /usr/local/bin/restricted-command"
+  },
+  {
+    "error_type": "not_found_error",
+    "count": 23,
+    "tool_name": "Read",
+    "recent_message": "File not found: config.json"
+  },
+  {
+    "error_type": "timeout_error",
+    "count": 12,
+    "tool_name": "WebFetch",
+    "recent_message": "Connection timeout after 5000ms"
+  }
+]
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| error_type | string | Classification of the error |
+| count | number | Number of occurrences |
+| tool_name | string | Tool that produced this error |
+| recent_message | string | Most recent error message example |
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
 ### Theme API
 
 #### POST /api/themes

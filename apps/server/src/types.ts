@@ -35,6 +35,8 @@ export interface HookEvent {
   summary?: string;
   timestamp?: number;
   model_name?: string;
+  token_count?: number;
+  estimated_cost?: number;
 
   // NEW: Optional HITL data
   humanInTheLoop?: HumanInTheLoop;
@@ -135,4 +137,46 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
   validationErrors?: ThemeValidationError[];
+}
+
+// Session Metrics interfaces
+export interface SessionMetrics {
+  id?: number;
+  source_app: string;
+  session_id: string;
+  total_tokens: number;
+  total_cost: number;
+  message_count: number;
+  start_time?: number;
+  end_time?: number;
+  model_name?: string;
+}
+
+// Tool Analytics interfaces
+export interface ToolAnalytics {
+  id?: number;
+  source_app: string;
+  session_id: string;
+  tool_name: string;
+  success: boolean;
+  error_type?: string;
+  error_message?: string;
+  timestamp: number;
+  event_id?: number;
+}
+
+export interface ToolStats {
+  tool_name: string;
+  total_uses: number;
+  successes: number;
+  failures: number;
+  success_rate: number;
+  most_common_error?: string;
+}
+
+export interface ErrorSummary {
+  error_type: string;
+  count: number;
+  tool_name: string;
+  recent_message?: string;
 }

@@ -21,6 +21,7 @@ import urllib.error
 from datetime import datetime
 from utils.summarizer import generate_event_summary
 from utils.model_extractor import get_model_from_transcript
+from utils.token_counter import count_tokens_in_transcript, estimate_cost
 
 def send_event_to_server(event_data, server_url='http://localhost:4000/events'):
     """Send event data to the observability server."""
@@ -85,8 +86,9 @@ def main():
         'model_name': model_name
     }
     
-    # Handle --add-chat option
-    if args.add_chat and 'transcript_path' in input_data:
+    # Read chat transcript for token counting (if available)
+    chat_data = None
+    if 'transcript_path' in input_data:
         transcript_path = input_data['transcript_path']
         if os.path.exists(transcript_path):
             # Read .jsonl file and convert to JSON array
@@ -100,11 +102,28 @@ def main():
                                 chat_data.append(json.loads(line))
                             except json.JSONDecodeError:
                                 pass  # Skip invalid lines
-                
-                # Add chat to event data
-                event_data['chat'] = chat_data
             except Exception as e:
                 print(f"Failed to read transcript: {e}", file=sys.stderr)
+                chat_data = None
+
+    # Calculate token count and cost if we have chat data
+    if chat_data:
+        token_info = count_tokens_in_transcript(chat_data)
+        total_tokens = token_info['total_tokens']
+
+        if total_tokens > 0:
+            event_data['token_count'] = total_tokens
+
+            # Estimate cost if we have model name
+            if model_name:
+                input_tokens = token_info['input_tokens']
+                output_tokens = token_info['output_tokens']
+                cost = estimate_cost(input_tokens, output_tokens, model_name)
+                event_data['estimated_cost'] = cost
+
+    # Handle --add-chat option (add chat to event data)
+    if args.add_chat and chat_data:
+        event_data['chat'] = chat_data
     
     # Generate summary if requested
     if args.summarize:
