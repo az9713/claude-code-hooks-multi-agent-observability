@@ -576,7 +576,7 @@ export function getAllSessionMetrics(sourceApp?: string): SessionMetrics[] {
     params.push(sourceApp);
   }
 
-  sql += ' ORDER BY end_time DESC NULLS LAST, start_time DESC NULLS LAST';
+  sql += ' ORDER BY end_time IS NULL, end_time DESC, start_time IS NULL, start_time DESC';
 
   const stmt = db.prepare(sql);
   const rows = stmt.all(...params) as any[];
@@ -1069,7 +1069,7 @@ export function getTrendingPatterns(limit: number = 10, sourceApp?: string): Det
     params.push(sourceApp);
   }
 
-  sql += ' ORDER BY occurrences DESC, confidence_score DESC NULLS LAST LIMIT ?';
+  sql += ' ORDER BY occurrences DESC, confidence_score IS NULL, confidence_score DESC LIMIT ?';
   params.push(limit);
 
   const stmt = db.prepare(sql);
