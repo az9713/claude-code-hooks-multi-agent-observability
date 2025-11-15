@@ -669,6 +669,787 @@ Host: localhost:4000
 
 ---
 
+### Session Bookmarking API
+
+Bookmark important sessions for quick access and review.
+
+#### POST /api/bookmarks
+
+Create or update a session bookmark.
+
+**Purpose**: Bookmark a session for later review
+
+**Request:**
+
+```http
+POST /api/bookmarks HTTP/1.1
+Host: localhost:4000
+Content-Type: application/json
+
+{
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "bookmarked": true,
+  "notes": "Great example of debugging workflow"
+}
+```
+
+**Request Body Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| source_app | string | Yes | Application identifier |
+| session_id | string | Yes | Session UUID |
+| bookmarked | boolean | Yes | Whether session is bookmarked |
+| notes | string | No | Optional notes about the session |
+
+**Response:**
+
+```json
+{
+  "success": true
+}
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 201 | Bookmark created/updated |
+| 400 | Missing required fields |
+| 500 | Server error |
+
+---
+
+#### GET /api/bookmarks
+
+Get all bookmarked sessions.
+
+**Purpose**: Retrieve list of bookmarked sessions
+
+**Request:**
+
+```http
+GET /api/bookmarks?source_app=my-project HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| source_app | string | No | Filter by application |
+
+**Response:**
+
+```json
+[
+  {
+    "id": 1,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "bookmarked": true,
+    "bookmarked_at": 1705240800000,
+    "notes": "Great example of debugging workflow"
+  },
+  {
+    "id": 2,
+    "source_app": "another-project",
+    "session_id": "x9y8z7w6-v5u4-3210-zyxw-vu9876543210",
+    "bookmarked": true,
+    "bookmarked_at": 1705244400000
+  }
+]
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+#### GET /api/bookmarks/:sourceApp/:sessionId
+
+Get bookmark status for a specific session.
+
+**Purpose**: Check if a session is bookmarked
+
+**Request:**
+
+```http
+GET /api/bookmarks/my-project/a1b2c3d4-e5f6-7890 HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+{
+  "id": 1,
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "bookmarked": true,
+  "bookmarked_at": 1705240800000,
+  "notes": "Great example"
+}
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success (returns {bookmarked: false} if not found) |
+| 500 | Server error |
+
+---
+
+#### DELETE /api/bookmarks/:sourceApp/:sessionId
+
+Remove a bookmark.
+
+**Purpose**: Unbookmark a session
+
+**Request:**
+
+```http
+DELETE /api/bookmarks/my-project/a1b2c3d4-e5f6-7890 HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+{
+  "success": true
+}
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Bookmark removed |
+| 404 | Bookmark not found |
+| 500 | Server error |
+
+---
+
+### Session Tagging API
+
+Organize sessions with custom tags for categorization and filtering.
+
+#### POST /api/tags
+
+Add a tag to a session.
+
+**Purpose**: Tag a session for organization
+
+**Request:**
+
+```http
+POST /api/tags HTTP/1.1
+Host: localhost:4000
+Content-Type: application/json
+
+{
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "tag": "debugging",
+  "created_at": 1705240800000
+}
+```
+
+**Request Body Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| source_app | string | Yes | Application identifier |
+| session_id | string | Yes | Session UUID |
+| tag | string | Yes | Tag name (case-sensitive) |
+| created_at | number | No | Unix timestamp (auto-generated if omitted) |
+
+**Response:**
+
+```json
+{
+  "success": true
+}
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 201 | Tag added (duplicate tags ignored) |
+| 400 | Missing required fields |
+| 500 | Server error |
+
+---
+
+#### GET /api/tags/session/:sourceApp/:sessionId
+
+Get all tags for a session.
+
+**Purpose**: Retrieve tags associated with a session
+
+**Request:**
+
+```http
+GET /api/tags/session/my-project/a1b2c3d4-e5f6-7890 HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+[
+  {
+    "id": 1,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "tag": "debugging",
+    "created_at": 1705240800000
+  },
+  {
+    "id": 2,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "tag": "successful",
+    "created_at": 1705240850000
+  }
+]
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+#### GET /api/tags/all
+
+Get all unique tags across all sessions.
+
+**Purpose**: Retrieve complete tag vocabulary
+
+**Request:**
+
+```http
+GET /api/tags/all?source_app=my-project HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| source_app | string | No | Filter by application |
+
+**Response:**
+
+```json
+[
+  "debugging",
+  "successful",
+  "refactoring",
+  "testing",
+  "production"
+]
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+#### GET /api/tags/:tag/sessions
+
+Get all sessions with a specific tag.
+
+**Purpose**: Find sessions by tag
+
+**Request:**
+
+```http
+GET /api/tags/debugging/sessions?source_app=my-project HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| source_app | string | No | Filter by application |
+
+**Response:**
+
+```json
+[
+  {
+    "id": 1,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "tag": "debugging",
+    "created_at": 1705240800000
+  },
+  {
+    "id": 3,
+    "source_app": "my-project",
+    "session_id": "p9q8r7s6-t5u4-3210-vwxy-z1234567890",
+    "tag": "debugging",
+    "created_at": 1705244400000
+  }
+]
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+#### DELETE /api/tags/:sourceApp/:sessionId/:tag
+
+Remove a tag from a session.
+
+**Purpose**: Untag a session
+
+**Request:**
+
+```http
+DELETE /api/tags/my-project/a1b2c3d4-e5f6-7890/debugging HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+{
+  "success": true
+}
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Tag removed |
+| 404 | Tag not found |
+| 500 | Server error |
+
+---
+
+### Performance Metrics API
+
+Analyze agent performance with detailed metrics on response time, tool usage, and success rates.
+
+#### GET /api/metrics/performance/:sourceApp/:sessionId
+
+Get performance metrics for a specific session.
+
+**Purpose**: Analyze individual session performance
+
+**Request:**
+
+```http
+GET /api/metrics/performance/my-project/a1b2c3d4-e5f6-7890 HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+{
+  "id": 1,
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "avg_response_time": 1234.5,
+  "tools_per_task": 2.5,
+  "success_rate": 94.2,
+  "session_duration": 3600000,
+  "total_events": 45,
+  "total_tool_uses": 28,
+  "calculated_at": 1705244400000
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | number | Metrics record ID |
+| source_app | string | Application identifier |
+| session_id | string | Session UUID |
+| avg_response_time | number | Average time between events (ms) |
+| tools_per_task | number | Average tools used per task |
+| success_rate | number | Percentage of successful tool uses |
+| session_duration | number | Total session time (ms) |
+| total_events | number | Total events in session |
+| total_tool_uses | number | Total tool executions |
+| calculated_at | number | Unix timestamp of calculation |
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 404 | Metrics not found |
+| 500 | Server error |
+
+---
+
+#### GET /api/metrics/performance/all
+
+Get performance metrics for all sessions.
+
+**Purpose**: Compare performance across sessions
+
+**Request:**
+
+```http
+GET /api/metrics/performance/all?source_app=my-project HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| source_app | string | No | Filter by application |
+
+**Response:**
+
+```json
+[
+  {
+    "id": 1,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-...",
+    "avg_response_time": 1234.5,
+    "tools_per_task": 2.5,
+    "success_rate": 94.2,
+    "session_duration": 3600000,
+    "total_events": 45,
+    "total_tool_uses": 28,
+    "calculated_at": 1705244400000
+  },
+  {
+    "id": 2,
+    "source_app": "another-project",
+    "avg_response_time": 892.3,
+    "tools_per_task": 1.8,
+    "success_rate": 98.5,
+    "session_duration": 1800000,
+    "total_events": 32,
+    "total_tool_uses": 18,
+    "calculated_at": 1705248000000
+  }
+]
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+#### POST /api/metrics/performance/calculate/:sourceApp/:sessionId
+
+Calculate and store performance metrics for a session.
+
+**Purpose**: Trigger metric calculation for a session
+
+**Request:**
+
+```http
+POST /api/metrics/performance/calculate/my-project/a1b2c3d4-e5f6-7890 HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+{
+  "id": 1,
+  "source_app": "my-project",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "avg_response_time": 1234.5,
+  "tools_per_task": 2.5,
+  "success_rate": 94.2,
+  "session_duration": 3600000,
+  "total_events": 45,
+  "total_tool_uses": 28,
+  "calculated_at": 1705244400000
+}
+```
+
+**Calculation Method:**
+
+- **avg_response_time**: Time between consecutive events (excludes gaps >5 minutes)
+- **tools_per_task**: Total tool uses divided by total events
+- **success_rate**: Percentage from tool_analytics table
+- **session_duration**: Time from first to last event
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 201 | Metrics calculated and stored |
+| 404 | No events found for session |
+| 500 | Server error |
+
+---
+
+### Pattern Detection API
+
+Automatically detect and analyze agent behavior patterns.
+
+#### GET /api/patterns/:sourceApp/:sessionId
+
+Get detected patterns for a specific session.
+
+**Purpose**: View patterns found in a session
+
+**Request:**
+
+```http
+GET /api/patterns/my-project/a1b2c3d4-e5f6-7890 HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+[
+  {
+    "id": 1,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "pattern_type": "workflow",
+    "pattern_name": "read-before-edit",
+    "description": "Agent reads a file before editing it",
+    "occurrences": 5,
+    "first_seen": 1705240800000,
+    "last_seen": 1705243200000,
+    "example_sequence": "[\"Read\", \"Edit\"]",
+    "confidence_score": 95
+  },
+  {
+    "id": 2,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "pattern_type": "workflow",
+    "pattern_name": "search-then-read",
+    "description": "Agent searches for files/content before reading",
+    "occurrences": 3,
+    "first_seen": 1705240900000,
+    "last_seen": 1705242400000,
+    "example_sequence": "[\"Grep\", \"Read\"]",
+    "confidence_score": 90
+  }
+]
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | number | Pattern record ID |
+| source_app | string | Application identifier |
+| session_id | string | Session UUID |
+| pattern_type | string | Category (workflow, retry, sequence) |
+| pattern_name | string | Pattern identifier |
+| description | string | Human-readable description |
+| occurrences | number | Times pattern was observed |
+| first_seen | number | Unix timestamp of first occurrence |
+| last_seen | number | Unix timestamp of last occurrence |
+| example_sequence | string | JSON array of event sequence |
+| confidence_score | number | Confidence percentage (0-100) |
+
+**Pattern Types:**
+
+| Type | Description | Examples |
+|------|-------------|----------|
+| workflow | Common work sequences | read-before-edit, search-then-read |
+| retry | Repeated tool attempts | tool-retry (same tool 3+ times) |
+| sequence | Multi-step patterns | grep-read-edit chain |
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success (empty array if no patterns) |
+| 500 | Server error |
+
+---
+
+#### GET /api/patterns/all
+
+Get all detected patterns across all sessions.
+
+**Purpose**: Analyze patterns system-wide
+
+**Request:**
+
+```http
+GET /api/patterns/all?source_app=my-project HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| source_app | string | No | Filter by application |
+
+**Response:**
+
+```json
+[
+  {
+    "id": 1,
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-...",
+    "pattern_type": "workflow",
+    "pattern_name": "read-before-edit",
+    "description": "Agent reads a file before editing it",
+    "occurrences": 5,
+    "confidence_score": 95
+  }
+]
+```
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+#### GET /api/patterns/trending
+
+Get the most common patterns.
+
+**Purpose**: Identify frequent agent behaviors
+
+**Request:**
+
+```http
+GET /api/patterns/trending?limit=10&source_app=my-project HTTP/1.1
+Host: localhost:4000
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| limit | number | No | Maximum patterns to return (default: 10) |
+| source_app | string | No | Filter by application |
+
+**Response:**
+
+```json
+[
+  {
+    "id": 5,
+    "source_app": "my-project",
+    "session_id": "various",
+    "pattern_type": "workflow",
+    "pattern_name": "read-before-edit",
+    "description": "Agent reads a file before editing it",
+    "occurrences": 234,
+    "confidence_score": 95
+  },
+  {
+    "id": 12,
+    "source_app": "my-project",
+    "pattern_type": "retry",
+    "pattern_name": "tool-retry",
+    "description": "Agent retried Bash 3 times",
+    "occurrences": 89,
+    "confidence_score": 85
+  }
+]
+```
+
+**Sorting**: Results ordered by occurrences (descending), then confidence score
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 500 | Server error |
+
+---
+
+#### POST /api/patterns/detect/:sourceApp/:sessionId
+
+Detect and store patterns for a session.
+
+**Purpose**: Trigger pattern detection analysis
+
+**Request:**
+
+```http
+POST /api/patterns/detect/my-project/a1b2c3d4-e5f6-7890 HTTP/1.1
+Host: localhost:4000
+```
+
+**Response:**
+
+```json
+[
+  {
+    "source_app": "my-project",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "pattern_type": "workflow",
+    "pattern_name": "read-before-edit",
+    "description": "Agent reads a file before editing it",
+    "occurrences": 1,
+    "first_seen": 1705240800000,
+    "last_seen": 1705240850000,
+    "example_sequence": "[\"Read\", \"Edit\"]",
+    "confidence_score": 95
+  }
+]
+```
+
+**Detection Algorithm:**
+
+1. **read-before-edit**: Read → Edit/Write sequence
+2. **search-then-read**: Grep/Glob → Read sequence
+3. **tool-retry**: Same tool used 3+ times consecutively
+
+**Note**: Patterns are automatically merged with existing records (occurrences incremented)
+
+**Status Codes:**
+
+| Code | Description |
+|------|-------------|
+| 201 | Patterns detected and stored |
+| 500 | Server error |
+
+---
+
 ### Theme API
 
 #### POST /api/themes

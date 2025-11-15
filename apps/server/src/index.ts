@@ -9,9 +9,36 @@ import {
   getAllSessionMetrics,
   insertToolAnalytics,
   getToolStats,
-  getErrorSummary
+  getErrorSummary,
+  upsertSessionBookmark,
+  getSessionBookmark,
+  getAllBookmarkedSessions,
+  deleteSessionBookmark,
+  insertSessionTag,
+  getSessionTags,
+  getAllTags,
+  getSessionsByTag,
+  deleteSessionTag,
+  upsertPerformanceMetrics,
+  getPerformanceMetrics,
+  getAllPerformanceMetrics,
+  calculateAndStorePerformanceMetrics,
+  upsertDetectedPattern,
+  getDetectedPatterns,
+  getAllDetectedPatterns,
+  getTrendingPatterns,
+  detectAndStorePatterns
 } from './db';
-import type { HookEvent, HumanInTheLoopResponse, SessionMetrics, ToolAnalytics } from './types';
+import type {
+  HookEvent,
+  HumanInTheLoopResponse,
+  SessionMetrics,
+  ToolAnalytics,
+  SessionBookmark,
+  SessionTag,
+  PerformanceMetrics,
+  DetectedPattern
+} from './types';
 import { 
   createTheme, 
   updateThemeById, 
@@ -520,6 +547,261 @@ const server = Bun.serve({
       const errors = getErrorSummary(limit);
 
       return new Response(JSON.stringify(errors), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Session Bookmarking API endpoints
+
+    // POST /api/bookmarks - Create or update a bookmark
+    if (url.pathname === '/api/bookmarks' && req.method === 'POST') {
+      try {
+        const bookmark: SessionBookmark = await req.json();
+
+        if (!bookmark.source_app || !bookmark.session_id) {
+          return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+            status: 400,
+            headers: { ...headers, 'Content-Type': 'application/json' }
+          });
+        }
+
+        upsertSessionBookmark(bookmark);
+
+        return new Response(JSON.stringify({ success: true }), {
+          status: 201,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Error creating bookmark:', error);
+        return new Response(JSON.stringify({ error: 'Invalid request' }), {
+          status: 400,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // GET /api/bookmarks - Get all bookmarked sessions
+    if (url.pathname === '/api/bookmarks' && req.method === 'GET') {
+      const sourceApp = url.searchParams.get('source_app') || undefined;
+      const bookmarks = getAllBookmarkedSessions(sourceApp);
+
+      return new Response(JSON.stringify(bookmarks), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /api/bookmarks/:sourceApp/:sessionId - Get a specific bookmark
+    if (url.pathname.match(/^\/api\/bookmarks\/[^\/]+\/[^\/]+$/) && req.method === 'GET') {
+      const parts = url.pathname.split('/');
+      const sourceApp = parts[3];
+      const sessionId = parts[4];
+
+      const bookmark = getSessionBookmark(sourceApp, sessionId);
+
+      if (!bookmark) {
+        return new Response(JSON.stringify({ bookmarked: false }), {
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify(bookmark), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // DELETE /api/bookmarks/:sourceApp/:sessionId - Delete a bookmark
+    if (url.pathname.match(/^\/api\/bookmarks\/[^\/]+\/[^\/]+$/) && req.method === 'DELETE') {
+      const parts = url.pathname.split('/');
+      const sourceApp = parts[3];
+      const sessionId = parts[4];
+
+      const success = deleteSessionBookmark(sourceApp, sessionId);
+
+      return new Response(JSON.stringify({ success }), {
+        status: success ? 200 : 404,
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Session Tagging API endpoints
+
+    // POST /api/tags - Add a tag to a session
+    if (url.pathname === '/api/tags' && req.method === 'POST') {
+      try {
+        const tag: SessionTag = await req.json();
+
+        if (!tag.source_app || !tag.session_id || !tag.tag) {
+          return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+            status: 400,
+            headers: { ...headers, 'Content-Type': 'application/json' }
+          });
+        }
+
+        insertSessionTag(tag);
+
+        return new Response(JSON.stringify({ success: true }), {
+          status: 201,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Error creating tag:', error);
+        return new Response(JSON.stringify({ error: 'Invalid request' }), {
+          status: 400,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // GET /api/tags/session/:sourceApp/:sessionId - Get tags for a session
+    if (url.pathname.match(/^\/api\/tags\/session\/[^\/]+\/[^\/]+$/) && req.method === 'GET') {
+      const parts = url.pathname.split('/');
+      const sourceApp = parts[4];
+      const sessionId = parts[5];
+
+      const tags = getSessionTags(sourceApp, sessionId);
+
+      return new Response(JSON.stringify(tags), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /api/tags/all - Get all unique tags
+    if (url.pathname === '/api/tags/all' && req.method === 'GET') {
+      const sourceApp = url.searchParams.get('source_app') || undefined;
+      const tags = getAllTags(sourceApp);
+
+      return new Response(JSON.stringify(tags), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /api/tags/:tag/sessions - Get sessions with a specific tag
+    if (url.pathname.match(/^\/api\/tags\/[^\/]+\/sessions$/) && req.method === 'GET') {
+      const tag = url.pathname.split('/')[3];
+      const sourceApp = url.searchParams.get('source_app') || undefined;
+
+      const sessions = getSessionsByTag(tag, sourceApp);
+
+      return new Response(JSON.stringify(sessions), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // DELETE /api/tags/:sourceApp/:sessionId/:tag - Delete a tag from a session
+    if (url.pathname.match(/^\/api\/tags\/[^\/]+\/[^\/]+\/[^\/]+$/) && req.method === 'DELETE') {
+      const parts = url.pathname.split('/');
+      const sourceApp = parts[3];
+      const sessionId = parts[4];
+      const tag = parts[5];
+
+      const success = deleteSessionTag(sourceApp, sessionId, tag);
+
+      return new Response(JSON.stringify({ success }), {
+        status: success ? 200 : 404,
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Performance Metrics API endpoints
+
+    // GET /api/metrics/performance/:sourceApp/:sessionId - Get performance metrics for a session
+    if (url.pathname.match(/^\/api\/metrics\/performance\/[^\/]+\/[^\/]+$/) && req.method === 'GET') {
+      const parts = url.pathname.split('/');
+      const sourceApp = parts[4];
+      const sessionId = parts[5];
+
+      const metrics = getPerformanceMetrics(sourceApp, sessionId);
+
+      if (!metrics) {
+        return new Response(JSON.stringify({ error: 'Performance metrics not found' }), {
+          status: 404,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify(metrics), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /api/metrics/performance/all - Get all performance metrics
+    if (url.pathname === '/api/metrics/performance/all' && req.method === 'GET') {
+      const sourceApp = url.searchParams.get('source_app') || undefined;
+      const metrics = getAllPerformanceMetrics(sourceApp);
+
+      return new Response(JSON.stringify(metrics), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // POST /api/metrics/performance/calculate/:sourceApp/:sessionId - Calculate and store performance metrics
+    if (url.pathname.match(/^\/api\/metrics\/performance\/calculate\/[^\/]+\/[^\/]+$/) && req.method === 'POST') {
+      const parts = url.pathname.split('/');
+      const sourceApp = parts[5];
+      const sessionId = parts[6];
+
+      const metrics = calculateAndStorePerformanceMetrics(sourceApp, sessionId);
+
+      if (!metrics) {
+        return new Response(JSON.stringify({ error: 'No events found for session' }), {
+          status: 404,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify(metrics), {
+        status: 201,
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Event Pattern Detection API endpoints
+
+    // GET /api/patterns/:sourceApp/:sessionId - Get detected patterns for a session
+    if (url.pathname.match(/^\/api\/patterns\/[^\/]+\/[^\/]+$/) && req.method === 'GET') {
+      const parts = url.pathname.split('/');
+      const sourceApp = parts[3];
+      const sessionId = parts[4];
+
+      const patterns = getDetectedPatterns(sourceApp, sessionId);
+
+      return new Response(JSON.stringify(patterns), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /api/patterns/all - Get all detected patterns
+    if (url.pathname === '/api/patterns/all' && req.method === 'GET') {
+      const sourceApp = url.searchParams.get('source_app') || undefined;
+      const patterns = getAllDetectedPatterns(sourceApp);
+
+      return new Response(JSON.stringify(patterns), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /api/patterns/trending - Get trending patterns
+    if (url.pathname === '/api/patterns/trending' && req.method === 'GET') {
+      const limit = parseInt(url.searchParams.get('limit') || '10');
+      const sourceApp = url.searchParams.get('source_app') || undefined;
+
+      const patterns = getTrendingPatterns(limit, sourceApp);
+
+      return new Response(JSON.stringify(patterns), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // POST /api/patterns/detect/:sourceApp/:sessionId - Detect and store patterns
+    if (url.pathname.match(/^\/api\/patterns\/detect\/[^\/]+\/[^\/]+$/) && req.method === 'POST') {
+      const parts = url.pathname.split('/');
+      const sourceApp = parts[4];
+      const sessionId = parts[5];
+
+      const patterns = detectAndStorePatterns(sourceApp, sessionId);
+
+      return new Response(JSON.stringify(patterns), {
+        status: 201,
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
     }

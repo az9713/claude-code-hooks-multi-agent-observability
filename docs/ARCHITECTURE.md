@@ -326,6 +326,61 @@ if __name__ == "__main__":
 │  │  ├── Modal overlay                                  │    │
 │  │  ├── Syntax highlighted conversation                │    │
 │  │  └── Close button                                   │    │
+│  │                                                     │    │
+│  │  TokenMetricsDashboard.vue                          │    │
+│  │  ├── Displays token usage and cost metrics          │    │
+│  │  ├── Total tokens and costs across all sessions     │    │
+│  │  ├── Per-session breakdown with model names         │    │
+│  │  ├── Refresh button for manual updates              │    │
+│  │  └── Model-specific pricing display                 │    │
+│  │                                                     │    │
+│  │  ToolAnalyticsDashboard.vue                         │    │
+│  │  ├── Tool success/failure analytics                 │    │
+│  │  ├── Overall success rate statistics                │    │
+│  │  ├── Per-tool reliability metrics                   │    │
+│  │  ├── Error type classification                      │    │
+│  │  ├── Color-coded success rate indicators            │    │
+│  │  └── Top errors summary with counts                 │    │
+│  │                                                     │    │
+│  │  BookmarkButton.vue                                 │    │
+│  │  ├── Star icon for bookmarking sessions             │    │
+│  │  ├── Toggle bookmark state (☆ / ★)                  │    │
+│  │  ├── Loading state during API calls                 │    │
+│  │  └── Auto-checks bookmark status on mount           │    │
+│  │                                                     │    │
+│  │  TagEditor.vue                                      │    │
+│  │  ├── Tag list with remove buttons                   │    │
+│  │  ├── Add tag input with validation                  │    │
+│  │  ├── Color-coded tag display                        │    │
+│  │  ├── Error handling and feedback                    │    │
+│  │  └── Auto-loads tags on component mount             │    │
+│  │                                                     │    │
+│  │  BookmarksView.vue                                  │    │
+│  │  ├── List of all bookmarked sessions                │    │
+│  │  ├── Session ID and source app display              │    │
+│  │  ├── Bookmark timestamps and notes                  │    │
+│  │  ├── Remove bookmark functionality                  │    │
+│  │  └── Refresh button for manual updates              │    │
+│  │                                                     │    │
+│  │  PerformanceMetricsDashboard.vue                    │    │
+│  │  ├── Agent performance metrics display              │    │
+│  │  ├── Summary cards (avg response time, success      │    │
+│  │  │   rate, tools per task, sessions analyzed)       │    │
+│  │  ├── Per-session performance breakdown              │    │
+│  │  ├── Response time, tools/task, success rate,       │    │
+│  │  │   and duration metrics                           │    │
+│  │  ├── Color-coded success rate indicators            │    │
+│  │  └── Trend analysis across sessions                 │    │
+│  │                                                     │    │
+│  │  PatternInsights.vue                                │    │
+│  │  ├── Detected pattern visualization                 │    │
+│  │  ├── Summary cards (total patterns, occurrences,    │    │
+│  │  │   most common pattern)                           │    │
+│  │  ├── Pattern type filtering (all, workflow,         │    │
+│  │  │   retry, sequence)                               │    │
+│  │  ├── Pattern details with confidence scores         │    │
+│  │  ├── Example sequence display (visual tool flow)    │    │
+│  │  └── Pattern occurrence counts and timestamps       │    │
 │  └────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -528,6 +583,162 @@ CREATE TABLE IF NOT EXISTS themes (
 CREATE INDEX IF NOT EXISTS idx_public_themes ON themes(is_public);
 CREATE INDEX IF NOT EXISTS idx_share_token ON themes(share_token);
 ```
+
+### Session Metrics Table
+
+**Purpose**: Track token usage and API costs per session
+
+```sql
+CREATE TABLE IF NOT EXISTS session_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_app TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  total_tokens INTEGER DEFAULT 0,
+  total_cost REAL DEFAULT 0.0,
+  message_count INTEGER DEFAULT 0,
+  start_time INTEGER,
+  end_time INTEGER,
+  model_name TEXT,
+  UNIQUE(source_app, session_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_metrics ON session_metrics(source_app, session_id);
+CREATE INDEX IF NOT EXISTS idx_session_metrics_session ON session_metrics(session_id);
+```
+
+**Field Descriptions:**
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `total_tokens` | INTEGER | Total tokens used in session | `15234` |
+| `total_cost` | REAL | Estimated API cost (USD) | `0.0457` |
+| `message_count` | INTEGER | Number of messages | `12` |
+| `start_time` | INTEGER | Unix timestamp (ms) | `1705240800000` |
+| `end_time` | INTEGER | Unix timestamp (ms) | `1705244400000` |
+
+### Tool Analytics Table
+
+**Purpose**: Track tool success/failure rates and error patterns
+
+```sql
+CREATE TABLE IF NOT EXISTS tool_analytics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_app TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  success INTEGER NOT NULL,
+  error_type TEXT,
+  error_message TEXT,
+  timestamp INTEGER NOT NULL,
+  event_id INTEGER,
+  FOREIGN KEY (event_id) REFERENCES events(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_analytics ON tool_analytics(tool_name, success);
+CREATE INDEX IF NOT EXISTS idx_tool_errors ON tool_analytics(error_type) WHERE success = 0;
+CREATE INDEX IF NOT EXISTS idx_tool_session ON tool_analytics(session_id);
+```
+
+**Error Types:**
+- `permission_error`, `not_found_error`, `timeout_error`, `syntax_error`
+- `network_error`, `command_not_found`, `memory_error`, `disk_error`
+- `invalid_argument`, `unknown_error`
+
+### Session Bookmarks Table
+
+**Purpose**: Store bookmarked sessions for quick access
+
+```sql
+CREATE TABLE IF NOT EXISTS session_bookmarks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_app TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  bookmarked INTEGER NOT NULL DEFAULT 1,
+  bookmarked_at INTEGER,
+  notes TEXT,
+  UNIQUE(source_app, session_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_bookmarks ON session_bookmarks(source_app, session_id);
+CREATE INDEX IF NOT EXISTS idx_bookmarked ON session_bookmarks(bookmarked) WHERE bookmarked = 1;
+```
+
+### Session Tags Table
+
+**Purpose**: Categorize sessions with custom tags
+
+```sql
+CREATE TABLE IF NOT EXISTS session_tags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_app TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(source_app, session_id, tag)
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_tags ON session_tags(source_app, session_id);
+CREATE INDEX IF NOT EXISTS idx_tags ON session_tags(tag);
+```
+
+### Performance Metrics Table
+
+**Purpose**: Store calculated performance metrics for sessions
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_app TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  avg_response_time REAL,
+  tools_per_task REAL,
+  success_rate REAL,
+  session_duration INTEGER,
+  total_events INTEGER NOT NULL,
+  total_tool_uses INTEGER NOT NULL,
+  calculated_at INTEGER NOT NULL,
+  UNIQUE(source_app, session_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_metrics ON performance_metrics(source_app, session_id);
+CREATE INDEX IF NOT EXISTS idx_success_rate ON performance_metrics(success_rate);
+```
+
+**Calculated Metrics:**
+- `avg_response_time`: Average milliseconds between events
+- `tools_per_task`: Tools used per event (efficiency metric)
+- `success_rate`: Percentage of successful tool uses
+- `session_duration`: Total time from start to end (ms)
+
+### Detected Patterns Table
+
+**Purpose**: Store automatically detected agent behavior patterns
+
+```sql
+CREATE TABLE IF NOT EXISTS detected_patterns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_app TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  pattern_type TEXT NOT NULL,
+  pattern_name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  occurrences INTEGER NOT NULL DEFAULT 1,
+  first_seen INTEGER NOT NULL,
+  last_seen INTEGER NOT NULL,
+  example_sequence TEXT,
+  confidence_score REAL,
+  UNIQUE(source_app, session_id, pattern_type, pattern_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_detected_patterns ON detected_patterns(source_app, session_id);
+CREATE INDEX IF NOT EXISTS idx_pattern_type ON detected_patterns(pattern_type);
+CREATE INDEX IF NOT EXISTS idx_pattern_name ON detected_patterns(pattern_name);
+```
+
+**Pattern Types:**
+- `workflow`: Common sequences (read-before-edit, search-then-read)
+- `retry`: Tool retry patterns (same tool 3+ times)
+- `sequence`: Multi-step operation patterns
 
 ---
 

@@ -1,5 +1,14 @@
 import { Database } from 'bun:sqlite';
-import type { HookEvent, FilterOptions, Theme, ThemeSearchQuery } from './types';
+import type {
+  HookEvent,
+  FilterOptions,
+  Theme,
+  ThemeSearchQuery,
+  SessionBookmark,
+  SessionTag,
+  PerformanceMetrics,
+  DetectedPattern
+} from './types';
 
 let db: Database;
 
@@ -171,6 +180,79 @@ export function initDatabase(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_tool_analytics ON tool_analytics(tool_name, success)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_tool_errors ON tool_analytics(error_type) WHERE success = 0');
   db.exec('CREATE INDEX IF NOT EXISTS idx_tool_session ON tool_analytics(session_id)');
+
+  // Create session_bookmarks table for bookmarking sessions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_bookmarks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_app TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      bookmarked INTEGER NOT NULL DEFAULT 1,
+      bookmarked_at INTEGER,
+      notes TEXT,
+      UNIQUE(source_app, session_id)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_bookmarks ON session_bookmarks(source_app, session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_bookmarked ON session_bookmarks(bookmarked) WHERE bookmarked = 1');
+
+  // Create session_tags table for tagging sessions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_app TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(source_app, session_id, tag)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_tags ON session_tags(source_app, session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tags ON session_tags(tag)');
+
+  // Create performance_metrics table for agent performance tracking
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS performance_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_app TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      avg_response_time REAL,
+      tools_per_task REAL,
+      success_rate REAL,
+      session_duration INTEGER,
+      total_events INTEGER NOT NULL,
+      total_tool_uses INTEGER NOT NULL,
+      calculated_at INTEGER NOT NULL,
+      UNIQUE(source_app, session_id)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_performance_metrics ON performance_metrics(source_app, session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_success_rate ON performance_metrics(success_rate)');
+
+  // Create detected_patterns table for event pattern detection
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS detected_patterns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_app TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      pattern_type TEXT NOT NULL,
+      pattern_name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      occurrences INTEGER NOT NULL DEFAULT 1,
+      first_seen INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL,
+      example_sequence TEXT,
+      confidence_score REAL,
+      UNIQUE(source_app, session_id, pattern_type, pattern_name)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_detected_patterns ON detected_patterns(source_app, session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pattern_type ON detected_patterns(pattern_type)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pattern_name ON detected_patterns(pattern_name)');
 }
 
 export function insertEvent(event: HookEvent): HookEvent {
@@ -612,6 +694,515 @@ export function getErrorSummary(limit: number = 10): ErrorSummary[] {
     tool_name: row.tool_name,
     recent_message: row.recent_message
   }));
+}
+
+// Session Bookmarking functions
+export function upsertSessionBookmark(bookmark: SessionBookmark): void {
+  const stmt = db.prepare(`
+    INSERT INTO session_bookmarks (source_app, session_id, bookmarked, bookmarked_at, notes)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(source_app, session_id) DO UPDATE SET
+      bookmarked = excluded.bookmarked,
+      bookmarked_at = excluded.bookmarked_at,
+      notes = excluded.notes
+  `);
+
+  stmt.run(
+    bookmark.source_app,
+    bookmark.session_id,
+    bookmark.bookmarked ? 1 : 0,
+    bookmark.bookmarked_at || Date.now(),
+    bookmark.notes || null
+  );
+}
+
+export function getSessionBookmark(sourceApp: string, sessionId: string): SessionBookmark | null {
+  const stmt = db.prepare('SELECT * FROM session_bookmarks WHERE source_app = ? AND session_id = ?');
+  const row = stmt.get(sourceApp, sessionId) as any;
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    bookmarked: Boolean(row.bookmarked),
+    bookmarked_at: row.bookmarked_at,
+    notes: row.notes
+  };
+}
+
+export function getAllBookmarkedSessions(sourceApp?: string): SessionBookmark[] {
+  let sql = 'SELECT * FROM session_bookmarks WHERE bookmarked = 1';
+  const params: any[] = [];
+
+  if (sourceApp) {
+    sql += ' AND source_app = ?';
+    params.push(sourceApp);
+  }
+
+  sql += ' ORDER BY bookmarked_at DESC';
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    bookmarked: Boolean(row.bookmarked),
+    bookmarked_at: row.bookmarked_at,
+    notes: row.notes
+  }));
+}
+
+export function deleteSessionBookmark(sourceApp: string, sessionId: string): boolean {
+  const stmt = db.prepare('DELETE FROM session_bookmarks WHERE source_app = ? AND session_id = ?');
+  const result = stmt.run(sourceApp, sessionId);
+  return result.changes > 0;
+}
+
+// Session Tagging functions
+export function insertSessionTag(tag: SessionTag): void {
+  const stmt = db.prepare(`
+    INSERT INTO session_tags (source_app, session_id, tag, created_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(source_app, session_id, tag) DO NOTHING
+  `);
+
+  stmt.run(
+    tag.source_app,
+    tag.session_id,
+    tag.tag,
+    tag.created_at || Date.now()
+  );
+}
+
+export function getSessionTags(sourceApp: string, sessionId: string): SessionTag[] {
+  const stmt = db.prepare('SELECT * FROM session_tags WHERE source_app = ? AND session_id = ? ORDER BY created_at DESC');
+  const rows = stmt.all(sourceApp, sessionId) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    tag: row.tag,
+    created_at: row.created_at
+  }));
+}
+
+export function getAllTags(sourceApp?: string): string[] {
+  let sql = 'SELECT DISTINCT tag FROM session_tags';
+  const params: any[] = [];
+
+  if (sourceApp) {
+    sql += ' WHERE source_app = ?';
+    params.push(sourceApp);
+  }
+
+  sql += ' ORDER BY tag';
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => row.tag);
+}
+
+export function getSessionsByTag(tag: string, sourceApp?: string): SessionTag[] {
+  let sql = 'SELECT * FROM session_tags WHERE tag = ?';
+  const params: any[] = [tag];
+
+  if (sourceApp) {
+    sql += ' AND source_app = ?';
+    params.push(sourceApp);
+  }
+
+  sql += ' ORDER BY created_at DESC';
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    tag: row.tag,
+    created_at: row.created_at
+  }));
+}
+
+export function deleteSessionTag(sourceApp: string, sessionId: string, tag: string): boolean {
+  const stmt = db.prepare('DELETE FROM session_tags WHERE source_app = ? AND session_id = ? AND tag = ?');
+  const result = stmt.run(sourceApp, sessionId, tag);
+  return result.changes > 0;
+}
+
+// Performance Metrics functions
+export function upsertPerformanceMetrics(metrics: PerformanceMetrics): void {
+  const stmt = db.prepare(`
+    INSERT INTO performance_metrics (
+      source_app, session_id, avg_response_time, tools_per_task,
+      success_rate, session_duration, total_events, total_tool_uses, calculated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(source_app, session_id) DO UPDATE SET
+      avg_response_time = excluded.avg_response_time,
+      tools_per_task = excluded.tools_per_task,
+      success_rate = excluded.success_rate,
+      session_duration = excluded.session_duration,
+      total_events = excluded.total_events,
+      total_tool_uses = excluded.total_tool_uses,
+      calculated_at = excluded.calculated_at
+  `);
+
+  stmt.run(
+    metrics.source_app,
+    metrics.session_id,
+    metrics.avg_response_time || null,
+    metrics.tools_per_task || null,
+    metrics.success_rate || null,
+    metrics.session_duration || null,
+    metrics.total_events,
+    metrics.total_tool_uses,
+    metrics.calculated_at || Date.now()
+  );
+}
+
+export function getPerformanceMetrics(sourceApp: string, sessionId: string): PerformanceMetrics | null {
+  const stmt = db.prepare('SELECT * FROM performance_metrics WHERE source_app = ? AND session_id = ?');
+  const row = stmt.get(sourceApp, sessionId) as any;
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    avg_response_time: row.avg_response_time,
+    tools_per_task: row.tools_per_task,
+    success_rate: row.success_rate,
+    session_duration: row.session_duration,
+    total_events: row.total_events,
+    total_tool_uses: row.total_tool_uses,
+    calculated_at: row.calculated_at
+  };
+}
+
+export function getAllPerformanceMetrics(sourceApp?: string): PerformanceMetrics[] {
+  let sql = 'SELECT * FROM performance_metrics';
+  const params: any[] = [];
+
+  if (sourceApp) {
+    sql += ' WHERE source_app = ?';
+    params.push(sourceApp);
+  }
+
+  sql += ' ORDER BY calculated_at DESC';
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    avg_response_time: row.avg_response_time,
+    tools_per_task: row.tools_per_task,
+    success_rate: row.success_rate,
+    session_duration: row.session_duration,
+    total_events: row.total_events,
+    total_tool_uses: row.total_tool_uses,
+    calculated_at: row.calculated_at
+  }));
+}
+
+export function calculateAndStorePerformanceMetrics(sourceApp: string, sessionId: string): PerformanceMetrics | null {
+  // Get all events for this session
+  const eventsStmt = db.prepare(`
+    SELECT timestamp, hook_event_type
+    FROM events
+    WHERE source_app = ? AND session_id = ?
+    ORDER BY timestamp ASC
+  `);
+  const events = eventsStmt.all(sourceApp, sessionId) as any[];
+
+  if (events.length === 0) return null;
+
+  // Get tool analytics for this session
+  const toolStatsStmt = db.prepare(`
+    SELECT COUNT(*) as total_uses, SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes
+    FROM tool_analytics
+    WHERE source_app = ? AND session_id = ?
+  `);
+  const toolStats = toolStatsStmt.get(sourceApp, sessionId) as any;
+
+  // Calculate metrics
+  const totalEvents = events.length;
+  const totalToolUses = toolStats?.total_uses || 0;
+  const successes = toolStats?.successes || 0;
+
+  const firstEvent = events[0];
+  const lastEvent = events[events.length - 1];
+  const sessionDuration = lastEvent.timestamp - firstEvent.timestamp;
+
+  // Calculate success rate
+  const successRate = totalToolUses > 0 ? (successes / totalToolUses) * 100 : null;
+
+  // Calculate tools per task (rough estimate: events that use tools)
+  const toolsPerTask = totalEvents > 0 ? totalToolUses / totalEvents : null;
+
+  // Calculate average response time (time between consecutive events)
+  let totalResponseTime = 0;
+  let responseCount = 0;
+  for (let i = 1; i < events.length; i++) {
+    const timeDiff = events[i].timestamp - events[i - 1].timestamp;
+    if (timeDiff < 300000) { // Only count if less than 5 minutes (filters out long pauses)
+      totalResponseTime += timeDiff;
+      responseCount++;
+    }
+  }
+  const avgResponseTime = responseCount > 0 ? totalResponseTime / responseCount : null;
+
+  const metrics: PerformanceMetrics = {
+    source_app: sourceApp,
+    session_id: sessionId,
+    avg_response_time: avgResponseTime,
+    tools_per_task: toolsPerTask,
+    success_rate: successRate,
+    session_duration: sessionDuration,
+    total_events: totalEvents,
+    total_tool_uses: totalToolUses,
+    calculated_at: Date.now()
+  };
+
+  upsertPerformanceMetrics(metrics);
+  return metrics;
+}
+
+// Event Pattern Detection functions
+export function upsertDetectedPattern(pattern: DetectedPattern): void {
+  const stmt = db.prepare(`
+    INSERT INTO detected_patterns (
+      source_app, session_id, pattern_type, pattern_name, description,
+      occurrences, first_seen, last_seen, example_sequence, confidence_score
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(source_app, session_id, pattern_type, pattern_name) DO UPDATE SET
+      occurrences = occurrences + 1,
+      last_seen = excluded.last_seen,
+      example_sequence = excluded.example_sequence,
+      confidence_score = excluded.confidence_score
+  `);
+
+  stmt.run(
+    pattern.source_app,
+    pattern.session_id,
+    pattern.pattern_type,
+    pattern.pattern_name,
+    pattern.description,
+    pattern.occurrences || 1,
+    pattern.first_seen || Date.now(),
+    pattern.last_seen || Date.now(),
+    pattern.example_sequence || null,
+    pattern.confidence_score || null
+  );
+}
+
+export function getDetectedPatterns(sourceApp: string, sessionId: string): DetectedPattern[] {
+  const stmt = db.prepare('SELECT * FROM detected_patterns WHERE source_app = ? AND session_id = ? ORDER BY occurrences DESC');
+  const rows = stmt.all(sourceApp, sessionId) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    pattern_type: row.pattern_type,
+    pattern_name: row.pattern_name,
+    description: row.description,
+    occurrences: row.occurrences,
+    first_seen: row.first_seen,
+    last_seen: row.last_seen,
+    example_sequence: row.example_sequence,
+    confidence_score: row.confidence_score
+  }));
+}
+
+export function getAllDetectedPatterns(sourceApp?: string): DetectedPattern[] {
+  let sql = 'SELECT * FROM detected_patterns';
+  const params: any[] = [];
+
+  if (sourceApp) {
+    sql += ' WHERE source_app = ?';
+    params.push(sourceApp);
+  }
+
+  sql += ' ORDER BY occurrences DESC, last_seen DESC';
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    pattern_type: row.pattern_type,
+    pattern_name: row.pattern_name,
+    description: row.description,
+    occurrences: row.occurrences,
+    first_seen: row.first_seen,
+    last_seen: row.last_seen,
+    example_sequence: row.example_sequence,
+    confidence_score: row.confidence_score
+  }));
+}
+
+export function getTrendingPatterns(limit: number = 10, sourceApp?: string): DetectedPattern[] {
+  let sql = `
+    SELECT *
+    FROM detected_patterns
+    WHERE 1=1
+  `;
+  const params: any[] = [];
+
+  if (sourceApp) {
+    sql += ' AND source_app = ?';
+    params.push(sourceApp);
+  }
+
+  sql += ' ORDER BY occurrences DESC, confidence_score DESC NULLS LAST LIMIT ?';
+  params.push(limit);
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    pattern_type: row.pattern_type,
+    pattern_name: row.pattern_name,
+    description: row.description,
+    occurrences: row.occurrences,
+    first_seen: row.first_seen,
+    last_seen: row.last_seen,
+    example_sequence: row.example_sequence,
+    confidence_score: row.confidence_score
+  }));
+}
+
+export function detectAndStorePatterns(sourceApp: string, sessionId: string): DetectedPattern[] {
+  // Get all events for this session in order
+  const stmt = db.prepare(`
+    SELECT hook_event_type, timestamp
+    FROM events
+    WHERE source_app = ? AND session_id = ?
+    ORDER BY timestamp ASC
+  `);
+  const events = stmt.all(sourceApp, sessionId) as any[];
+
+  if (events.length < 2) return [];
+
+  const detectedPatterns: DetectedPattern[] = [];
+  const eventTypes = events.map(e => e.hook_event_type);
+
+  // Pattern 1: Read-before-Edit pattern
+  for (let i = 0; i < eventTypes.length - 1; i++) {
+    if (eventTypes[i] === 'PostToolUse' && eventTypes[i + 1] === 'PostToolUse') {
+      // Check if it's a Read followed by Edit pattern
+      const firstPayload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any)?.payload;
+      const secondPayload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i + 1) as any)?.payload;
+
+      if (firstPayload && secondPayload) {
+        const firstTool = JSON.parse(firstPayload)?.tool_name;
+        const secondTool = JSON.parse(secondPayload)?.tool_name;
+
+        if (firstTool === 'Read' && (secondTool === 'Edit' || secondTool === 'Write')) {
+          detectedPatterns.push({
+            source_app: sourceApp,
+            session_id: sessionId,
+            pattern_type: 'workflow',
+            pattern_name: 'read-before-edit',
+            description: 'Agent reads a file before editing it',
+            occurrences: 1,
+            first_seen: events[i].timestamp,
+            last_seen: events[i + 1].timestamp,
+            example_sequence: JSON.stringify(['Read', secondTool]),
+            confidence_score: 95
+          });
+        }
+      }
+    }
+  }
+
+  // Pattern 2: Grep-then-Read pattern
+  for (let i = 0; i < eventTypes.length - 1; i++) {
+    if (eventTypes[i] === 'PostToolUse' && eventTypes[i + 1] === 'PostToolUse') {
+      const firstPayload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any)?.payload;
+      const secondPayload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i + 1) as any)?.payload;
+
+      if (firstPayload && secondPayload) {
+        const firstTool = JSON.parse(firstPayload)?.tool_name;
+        const secondTool = JSON.parse(secondPayload)?.tool_name;
+
+        if ((firstTool === 'Grep' || firstTool === 'Glob') && secondTool === 'Read') {
+          detectedPatterns.push({
+            source_app: sourceApp,
+            session_id: sessionId,
+            pattern_type: 'workflow',
+            pattern_name: 'search-then-read',
+            description: 'Agent searches for files/content before reading',
+            occurrences: 1,
+            first_seen: events[i].timestamp,
+            last_seen: events[i + 1].timestamp,
+            example_sequence: JSON.stringify([firstTool, 'Read']),
+            confidence_score: 90
+          });
+        }
+      }
+    }
+  }
+
+  // Pattern 3: Retry pattern (same tool used multiple times in sequence)
+  let currentTool = null;
+  let retryCount = 0;
+  let retryStart = 0;
+
+  for (let i = 0; i < events.length; i++) {
+    if (eventTypes[i] === 'PostToolUse') {
+      const payload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any)?.payload;
+      if (payload) {
+        const toolName = JSON.parse(payload)?.tool_name;
+
+        if (toolName === currentTool) {
+          retryCount++;
+        } else {
+          if (retryCount >= 2) {
+            detectedPatterns.push({
+              source_app: sourceApp,
+              session_id: sessionId,
+              pattern_type: 'retry',
+              pattern_name: 'tool-retry',
+              description: `Agent retried ${currentTool} ${retryCount + 1} times`,
+              occurrences: retryCount,
+              first_seen: events[retryStart].timestamp,
+              last_seen: events[i - 1].timestamp,
+              example_sequence: JSON.stringify(Array(retryCount + 1).fill(currentTool)),
+              confidence_score: 85
+            });
+          }
+
+          currentTool = toolName;
+          retryCount = 0;
+          retryStart = i;
+        }
+      }
+    }
+  }
+
+  // Store all detected patterns
+  detectedPatterns.forEach(pattern => upsertDetectedPattern(pattern));
+
+  return detectedPatterns;
 }
 
 export { db };
