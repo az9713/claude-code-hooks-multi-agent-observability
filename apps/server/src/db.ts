@@ -7,7 +7,13 @@ import type {
   SessionBookmark,
   SessionTag,
   PerformanceMetrics,
-  DetectedPattern
+  DetectedPattern,
+  Webhook,
+  WebhookDelivery,
+  SessionComparison,
+  ComparisonNote,
+  AgentRelationship,
+  CollaborationMetric
 } from './types';
 
 let db: Database;
@@ -253,6 +259,100 @@ export function initDatabase(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_detected_patterns ON detected_patterns(source_app, session_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_pattern_type ON detected_patterns(pattern_type)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_pattern_name ON detected_patterns(pattern_name)');
+
+  // Priority 2: Webhooks table for alert system
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      source_app TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      secret TEXT,
+      created_at INTEGER NOT NULL,
+      filters TEXT
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_webhooks_event_type ON webhooks(event_type)');
+
+  // Priority 2: Webhook deliveries for tracking delivery status
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS webhook_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      webhook_id INTEGER NOT NULL,
+      event_id INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      response_code INTEGER,
+      response_body TEXT,
+      attempted_at INTEGER NOT NULL,
+      retry_count INTEGER DEFAULT 0,
+      FOREIGN KEY (webhook_id) REFERENCES webhooks(id),
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_webhook_deliveries ON webhook_deliveries(webhook_id, status)');
+
+  // Priority 2: Session comparisons
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_comparisons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      session_ids TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      created_by TEXT
+    )
+  `);
+
+  // Priority 2: Comparison notes
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS comparison_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comparison_id INTEGER NOT NULL,
+      note TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      FOREIGN KEY (comparison_id) REFERENCES session_comparisons(id)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_comparison_notes ON comparison_notes(comparison_id)');
+
+  // Priority 3: Agent relationships for multi-agent collaboration tracking
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_relationships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      parent_source_app TEXT NOT NULL,
+      parent_session_id TEXT NOT NULL,
+      child_source_app TEXT NOT NULL,
+      child_session_id TEXT NOT NULL,
+      relationship_type TEXT DEFAULT 'subagent',
+      task_description TEXT,
+      delegation_reason TEXT,
+      started_at INTEGER,
+      completed_at INTEGER,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_parent_session ON agent_relationships(parent_session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_child_session ON agent_relationships(child_session_id)');
+
+  // Priority 3: Collaboration metrics
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS collaboration_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      relationship_id INTEGER NOT NULL,
+      metric_type TEXT NOT NULL,
+      metric_value REAL NOT NULL,
+      FOREIGN KEY (relationship_id) REFERENCES agent_relationships(id)
+    )
+  `);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_collaboration_metrics ON collaboration_metrics(relationship_id)');
 }
 
 export function insertEvent(event: HookEvent): HookEvent {
@@ -1210,6 +1310,379 @@ export function detectAndStorePatterns(sourceApp: string, sessionId: string): De
   detectedPatterns.forEach(pattern => upsertDetectedPattern(pattern));
 
   return detectedPatterns;
+}
+
+// ========================================
+// Priority 2 & 3 Database Functions
+// ========================================
+
+// Webhook Functions (P2)
+export function createWebhook(webhook: any): number {
+  const stmt = db.prepare(`
+    INSERT INTO webhooks (name, url, event_type, source_app, enabled, secret, created_at, filters)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    webhook.name,
+    webhook.url,
+    webhook.event_type,
+    webhook.source_app || null,
+    webhook.enabled ? 1 : 0,
+    webhook.secret || null,
+    Date.now(),
+    webhook.filters ? JSON.stringify(webhook.filters) : null
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+export function getWebhook(id: number): any | null {
+  const stmt = db.prepare('SELECT * FROM webhooks WHERE id = ?');
+  const row = stmt.get(id) as any;
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    event_type: row.event_type,
+    source_app: row.source_app,
+    enabled: row.enabled === 1,
+    secret: row.secret,
+    created_at: row.created_at,
+    filters: row.filters ? JSON.parse(row.filters) : undefined
+  };
+}
+
+export function getAllWebhooks(): any[] {
+  const stmt = db.prepare('SELECT * FROM webhooks ORDER BY created_at DESC');
+  const rows = stmt.all() as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    event_type: row.event_type,
+    source_app: row.source_app,
+    enabled: row.enabled === 1,
+    secret: row.secret,
+    created_at: row.created_at,
+    filters: row.filters ? JSON.parse(row.filters) : undefined
+  }));
+}
+
+export function updateWebhook(id: number, updates: any): boolean {
+  const stmt = db.prepare(`
+    UPDATE webhooks
+    SET name = ?, url = ?, event_type = ?, source_app = ?, enabled = ?, secret = ?, filters = ?
+    WHERE id = ?
+  `);
+
+  const result = stmt.run(
+    updates.name,
+    updates.url,
+    updates.event_type,
+    updates.source_app || null,
+    updates.enabled ? 1 : 0,
+    updates.secret || null,
+    updates.filters ? JSON.stringify(updates.filters) : null,
+    id
+  );
+
+  return result.changes > 0;
+}
+
+export function deleteWebhook(id: number): boolean {
+  const stmt = db.prepare('DELETE FROM webhooks WHERE id = ?');
+  const result = stmt.run(id);
+  return result.changes > 0;
+}
+
+export function getWebhooksForEvent(eventType: string, sourceApp?: string): any[] {
+  let sql = 'SELECT * FROM webhooks WHERE enabled = 1 AND (event_type = ? OR event_type = ?)';
+  const params: any[] = [eventType, '*'];
+
+  if (sourceApp) {
+    sql += ' AND (source_app = ? OR source_app IS NULL)';
+    params.push(sourceApp);
+  }
+
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    event_type: row.event_type,
+    source_app: row.source_app,
+    enabled: row.enabled === 1,
+    secret: row.secret,
+    created_at: row.created_at,
+    filters: row.filters ? JSON.parse(row.filters) : undefined
+  }));
+}
+
+export function createWebhookDelivery(delivery: any): number {
+  const stmt = db.prepare(`
+    INSERT INTO webhook_deliveries (webhook_id, event_id, status, response_code, response_body, attempted_at, retry_count)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    delivery.webhook_id,
+    delivery.event_id,
+    delivery.status,
+    delivery.response_code || null,
+    delivery.response_body || null,
+    Date.now(),
+    delivery.retry_count || 0
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+export function getWebhookDeliveries(webhookId: number, limit: number = 50): any[] {
+  const stmt = db.prepare(`
+    SELECT * FROM webhook_deliveries
+    WHERE webhook_id = ?
+    ORDER BY attempted_at DESC
+    LIMIT ?
+  `);
+
+  return stmt.all(webhookId, limit) as any[];
+}
+
+export function getWebhookDeliveryStats(webhookId: number): any {
+  const stmt = db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count
+    FROM webhook_deliveries
+    WHERE webhook_id = ?
+  `);
+
+  return stmt.get(webhookId);
+}
+
+// Session Comparison Functions (P2)
+export function createSessionComparison(comparison: any): number {
+  const stmt = db.prepare(`
+    INSERT INTO session_comparisons (name, description, session_ids, created_at, created_by)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    comparison.name,
+    comparison.description || null,
+    JSON.stringify(comparison.session_ids),
+    Date.now(),
+    comparison.created_by || null
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+export function getSessionComparison(id: number): any | null {
+  const stmt = db.prepare('SELECT * FROM session_comparisons WHERE id = ?');
+  const row = stmt.get(id) as any;
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    session_ids: JSON.parse(row.session_ids),
+    created_at: row.created_at,
+    created_by: row.created_by
+  };
+}
+
+export function getAllSessionComparisons(): any[] {
+  const stmt = db.prepare('SELECT * FROM session_comparisons ORDER BY created_at DESC');
+  const rows = stmt.all() as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    session_ids: JSON.parse(row.session_ids),
+    created_at: row.created_at,
+    created_by: row.created_by
+  }));
+}
+
+export function deleteSessionComparison(id: number): boolean {
+  // Delete associated notes first
+  db.prepare('DELETE FROM comparison_notes WHERE comparison_id = ?').run(id);
+
+  // Delete comparison
+  const stmt = db.prepare('DELETE FROM session_comparisons WHERE id = ?');
+  const result = stmt.run(id);
+  return result.changes > 0;
+}
+
+export function addComparisonNote(comparisonId: number, note: string): number {
+  const stmt = db.prepare(`
+    INSERT INTO comparison_notes (comparison_id, note, timestamp)
+    VALUES (?, ?, ?)
+  `);
+
+  const result = stmt.run(comparisonId, note, Date.now());
+  return result.lastInsertRowid as number;
+}
+
+export function getComparisonNotes(comparisonId: number): any[] {
+  const stmt = db.prepare(`
+    SELECT * FROM comparison_notes
+    WHERE comparison_id = ?
+    ORDER BY timestamp DESC
+  `);
+
+  return stmt.all(comparisonId) as any[];
+}
+
+export function deleteComparisonNote(id: number): boolean {
+  const stmt = db.prepare('DELETE FROM comparison_notes WHERE id = ?');
+  const result = stmt.run(id);
+  return result.changes > 0;
+}
+
+// Agent Relationship Functions (P3)
+export function createAgentRelationship(relationship: any): number {
+  const stmt = db.prepare(`
+    INSERT INTO agent_relationships (
+      parent_source_app, parent_session_id, child_source_app, child_session_id,
+      relationship_type, task_description, delegation_reason, started_at, completed_at, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    relationship.parent_source_app,
+    relationship.parent_session_id,
+    relationship.child_source_app,
+    relationship.child_session_id,
+    relationship.relationship_type || 'subagent',
+    relationship.task_description || null,
+    relationship.delegation_reason || null,
+    relationship.started_at || null,
+    relationship.completed_at || null,
+    Date.now()
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+export function getChildSessions(parentSessionId: string): any[] {
+  const stmt = db.prepare(`
+    SELECT * FROM agent_relationships
+    WHERE parent_session_id = ?
+    ORDER BY created_at ASC
+  `);
+
+  return stmt.all(parentSessionId) as any[];
+}
+
+export function getParentSession(childSessionId: string): any | null {
+  const stmt = db.prepare(`
+    SELECT * FROM agent_relationships
+    WHERE child_session_id = ?
+    LIMIT 1
+  `);
+
+  return stmt.get(childSessionId) as any;
+}
+
+export function getAllAgentRelationships(): any[] {
+  const stmt = db.prepare('SELECT * FROM agent_relationships ORDER BY created_at DESC');
+  return stmt.all() as any[];
+}
+
+export function createCollaborationMetric(metric: any): number {
+  const stmt = db.prepare(`
+    INSERT INTO collaboration_metrics (relationship_id, metric_type, metric_value)
+    VALUES (?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    metric.relationship_id,
+    metric.metric_type,
+    metric.metric_value
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+export function getCollaborationMetrics(relationshipId: number): any[] {
+  const stmt = db.prepare(`
+    SELECT * FROM collaboration_metrics
+    WHERE relationship_id = ?
+  `);
+
+  return stmt.all(relationshipId) as any[];
+}
+
+// Export helper function to get session data for export
+export function getSessionExportData(sessionId: string, sourceApp?: string): any {
+  let eventsSql = 'SELECT * FROM events WHERE session_id = ?';
+  let params: any[] = [sessionId];
+
+  if (sourceApp) {
+    eventsSql += ' AND source_app = ?';
+    params.push(sourceApp);
+  }
+
+  eventsSql += ' ORDER BY timestamp ASC';
+
+  const events = db.prepare(eventsSql).all(...params) as any[];
+
+  if (events.length === 0) {
+    return null;
+  }
+
+  // Get metrics
+  const metricsStmt = db.prepare('SELECT * FROM session_metrics WHERE session_id = ? LIMIT 1');
+  const metrics = metricsStmt.get(sessionId) as any;
+
+  // Get performance metrics
+  const perfStmt = db.prepare('SELECT * FROM performance_metrics WHERE session_id = ? LIMIT 1');
+  const performance = perfStmt.get(sessionId) as any;
+
+  // Get patterns
+  const patternsStmt = db.prepare('SELECT * FROM detected_patterns WHERE session_id = ?');
+  const patterns = patternsStmt.all(sessionId) as any[];
+
+  // Get tool analytics
+  const analyticsStmt = db.prepare('SELECT * FROM tool_analytics WHERE session_id = ?');
+  const analytics = analyticsStmt.all(sessionId) as any[];
+
+  // Get bookmarks and tags
+  const bookmarkStmt = db.prepare('SELECT * FROM session_bookmarks WHERE session_id = ? LIMIT 1');
+  const bookmark = bookmarkStmt.get(sessionId) as any;
+
+  const tagsStmt = db.prepare('SELECT * FROM session_tags WHERE session_id = ?');
+  const tags = tagsStmt.all(sessionId) as any[];
+
+  return {
+    source_app: events[0].source_app,
+    session_id: sessionId,
+    events: events.map(e => ({
+      ...e,
+      payload: JSON.parse(e.payload),
+      chat: e.chat ? JSON.parse(e.chat) : undefined
+    })),
+    metrics,
+    performance,
+    patterns,
+    analytics,
+    bookmark,
+    tags
+  };
 }
 
 export { db };
