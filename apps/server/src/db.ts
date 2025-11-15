@@ -1629,24 +1629,27 @@ export function getCollaborationMetrics(relationshipId: number): any[] {
 
 // Export helper function to get session data for export
 export function getSessionExportData(sessionId: string, sourceApp?: string): any {
-  let eventsSql = 'SELECT * FROM events WHERE session_id = ?';
-  let params: any[] = [sessionId];
+  // First, get source_app from first event if not provided
+  let actualSourceApp = sourceApp;
 
-  if (sourceApp) {
-    eventsSql += ' AND source_app = ?';
-    params.push(sourceApp);
+  if (!actualSourceApp) {
+    const firstEventStmt = db.prepare('SELECT source_app FROM events WHERE session_id = ? LIMIT 1');
+    const firstEvent = firstEventStmt.get(sessionId) as any;
+
+    if (!firstEvent) {
+      return null;
+    }
+
+    actualSourceApp = firstEvent.source_app;
   }
 
-  eventsSql += ' ORDER BY timestamp ASC';
-
-  const events = db.prepare(eventsSql).all(...params) as any[];
+  // Now get ALL events filtered by BOTH session_id AND source_app
+  const eventsSql = 'SELECT * FROM events WHERE session_id = ? AND source_app = ? ORDER BY timestamp ASC';
+  const events = db.prepare(eventsSql).all(sessionId, actualSourceApp) as any[];
 
   if (events.length === 0) {
     return null;
   }
-
-  // Use the source_app from the first event to ensure consistency
-  const actualSourceApp = events[0].source_app;
 
   // Get metrics - filter by both session_id and source_app
   const metricsStmt = db.prepare('SELECT * FROM session_metrics WHERE session_id = ? AND source_app = ? LIMIT 1');

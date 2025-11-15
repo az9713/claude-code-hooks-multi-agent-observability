@@ -569,6 +569,18 @@ Comprehensive guides to help you learn and master this AI agentic coding system:
 
 ---
 
+## 🙏 Acknowledgments
+
+Special thanks to **Codex Code Review** for discovering and reporting critical security vulnerabilities in the data isolation layer, including:
+- Cross-tenant data exposure in session export queries
+- Incomplete `source_app` filtering in auxiliary data queries
+- SQLite compatibility issues with PostgreSQL syntax
+- JSON parsing errors in pattern detection
+
+All reported issues have been resolved to ensure complete data isolation in multi-tenant deployments.
+
+---
+
 ## Master AI **Agentic Coding**
 > And prepare for the future of software engineering
 
