@@ -1109,12 +1109,15 @@ export function detectAndStorePatterns(sourceApp: string, sessionId: string): De
   for (let i = 0; i < eventTypes.length - 1; i++) {
     if (eventTypes[i] === 'PostToolUse' && eventTypes[i + 1] === 'PostToolUse') {
       // Check if it's a Read followed by Edit pattern
-      const firstPayload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any)?.payload;
-      const secondPayload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i + 1) as any)?.payload;
+      const firstRow = db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any;
+      const secondRow = db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i + 1) as any;
+
+      const firstPayload = firstRow ? JSON.parse(firstRow.payload) : null;
+      const secondPayload = secondRow ? JSON.parse(secondRow.payload) : null;
 
       if (firstPayload && secondPayload) {
-        const firstTool = JSON.parse(firstPayload)?.tool_name;
-        const secondTool = JSON.parse(secondPayload)?.tool_name;
+        const firstTool = firstPayload.tool_name;
+        const secondTool = secondPayload.tool_name;
 
         if (firstTool === 'Read' && (secondTool === 'Edit' || secondTool === 'Write')) {
           detectedPatterns.push({
@@ -1137,12 +1140,15 @@ export function detectAndStorePatterns(sourceApp: string, sessionId: string): De
   // Pattern 2: Grep-then-Read pattern
   for (let i = 0; i < eventTypes.length - 1; i++) {
     if (eventTypes[i] === 'PostToolUse' && eventTypes[i + 1] === 'PostToolUse') {
-      const firstPayload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any)?.payload;
-      const secondPayload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i + 1) as any)?.payload;
+      const firstRow = db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any;
+      const secondRow = db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i + 1) as any;
+
+      const firstPayload = firstRow ? JSON.parse(firstRow.payload) : null;
+      const secondPayload = secondRow ? JSON.parse(secondRow.payload) : null;
 
       if (firstPayload && secondPayload) {
-        const firstTool = JSON.parse(firstPayload)?.tool_name;
-        const secondTool = JSON.parse(secondPayload)?.tool_name;
+        const firstTool = firstPayload.tool_name;
+        const secondTool = secondPayload.tool_name;
 
         if ((firstTool === 'Grep' || firstTool === 'Glob') && secondTool === 'Read') {
           detectedPatterns.push({
@@ -1169,9 +1175,10 @@ export function detectAndStorePatterns(sourceApp: string, sessionId: string): De
 
   for (let i = 0; i < events.length; i++) {
     if (eventTypes[i] === 'PostToolUse') {
-      const payload = JSON.parse(db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any)?.payload;
+      const row = db.prepare('SELECT payload FROM events WHERE source_app = ? AND session_id = ? ORDER BY timestamp LIMIT 1 OFFSET ?').get(sourceApp, sessionId, i) as any;
+      const payload = row ? JSON.parse(row.payload) : null;
       if (payload) {
-        const toolName = JSON.parse(payload)?.tool_name;
+        const toolName = payload.tool_name;
 
         if (toolName === currentTool) {
           retryCount++;
